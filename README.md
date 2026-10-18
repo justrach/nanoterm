@@ -17,6 +17,7 @@
 </p>
 
 <p align="center">
+  <a href="#download">Download</a> ·
   <a href="#get-started">Get started</a> ·
   <a href="#blocks">Blocks</a> ·
   <a href="#the-agent">The agent</a> ·
@@ -29,6 +30,16 @@
 Your own zsh, with each command a block, in the manner of
 [Warp](https://www.warp.dev). One input runs commands or asks the agent, and
 the agent's commands run as blocks beside yours.
+
+## Download
+
+**macOS** (Apple silicon, macOS 13+):
+[download nanoterm](https://github.com/justrach/nanoterm/releases/latest/download/nanoterm-macos-arm64.dmg),
+open the disk image, and drag nanoterm to Applications. Each
+[release](https://github.com/justrach/nanoterm/releases) lists the image's
+SHA-256. Releases are built by
+[`.github/workflows/release.yml`](.github/workflows/release.yml), and
+`sh macos/package.sh` builds the same disk image locally.
 
 ## Get started
 
