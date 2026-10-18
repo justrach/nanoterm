@@ -27,6 +27,8 @@ test {
     _ = @import("luau/luau.zig");
     _ = @import("screen.zig");
     _ = @import("screen_vt.zig");
+    _ = @import("screen_mouse.zig");
+    _ = @import("tests_mouse.zig");
     _ = @import("tests_screen.zig");
     _ = @import("split.zig");
     _ = @import("commands.zig");

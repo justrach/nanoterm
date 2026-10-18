@@ -116,7 +116,8 @@ pub const Vt = struct {
                 .osc => switch (b) {
                     0x07 => v.endOsc(),
                     0x1b => v.state = .osc_esc,
-                    else => if (v.osc.items.len < 4096) v.osc.append(s.gpa, b) catch {},
+                    // Room for what a program copies (OSC 52, base64).
+                    else => if (v.osc.items.len < 1 << 20) v.osc.append(s.gpa, b) catch {},
                 },
                 .osc_esc => v.endOsc(),
                 // DCS, APC, PM and SOS: read to their end and dropped.
@@ -298,6 +299,10 @@ pub const Vt = struct {
                 25 => s.cursor_visible = on,
                 1048 => if (on) s.save() else s.restore(),
                 2004 => s.bracketed_paste = on,
+                9, 1000 => s.mouse = if (on) .press else .off,
+                1002 => s.mouse = if (on) .drag else .off,
+                1003 => s.mouse = if (on) .motion else .off,
+                1006 => s.mouse_sgr = on,
                 // Leaving the alternate screen ends this screen.
                 47, 1047, 1049 => if (!on) {
                     s.done = true;
@@ -404,7 +409,9 @@ pub const Vt = struct {
         return .{ .r = f(r), .g = f(g), .b = f(b) };
     }
 
-    /// Titles, and the colors programs ask for to choose light or dark.
+    /// Titles, the colors programs ask for to choose light or dark, and
+    /// what they copy (OSC 52: their own selection, over SSH too). What is
+    /// on the clipboard is never told.
     fn endOsc(v: *Vt) void {
         v.state = .ground;
         const p = v.osc.items;
@@ -412,6 +419,18 @@ pub const Vt = struct {
         if (std.mem.startsWith(u8, p, "0;") or std.mem.startsWith(u8, p, "2;")) {
             s.title.clearRetainingCapacity();
             s.title.appendSlice(s.gpa, p[2..]) catch {};
+        } else if (std.mem.startsWith(u8, p, "52;")) {
+            const semi = std.mem.indexOfScalarPos(u8, p, 3, ';') orelse return;
+            const data = p[semi + 1 ..];
+            if (std.mem.eql(u8, data, "?")) return;
+            const D = std.base64.standard.Decoder;
+            const out = s.gpa.alloc(u8, D.calcSizeForSlice(data) catch return) catch return;
+            D.decode(out, data) catch {
+                s.gpa.free(out);
+                return;
+            };
+            if (s.copied) |old| s.gpa.free(old);
+            s.copied = out;
         } else if (std.mem.eql(u8, p, "10;?") or std.mem.eql(u8, p, "11;?")) {
             const c = if (p[1] == '0') theme.text else theme.background;
             var buf: [64]u8 = undefined;

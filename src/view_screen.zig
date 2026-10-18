@@ -1,7 +1,8 @@
 //! A full-screen program's screen, drawn over its whole pane as a
 //! terminal draws it: each row a line of monospaced text with its colors
 //! and attributes, backgrounds as runs of cells, the cursor as a block.
-//! Keys go to the program as a terminal sends them.
+//! Keys go to the program as a terminal sends them; the mouse too, when
+//! it asks (`screen_mouse.zig`), else its text selects as output's does.
 const std = @import("std");
 const nanoui = @import("nanoui");
 const ui = nanoui.ui;
@@ -9,6 +10,7 @@ const theme = @import("theme.zig");
 const screen = @import("screen.zig");
 const Screen = screen.Screen;
 const Session = @import("session.zig").Session;
+const mouse = @import("screen_mouse.zig");
 
 /// The size of the text; blocks show output at the same.
 pub fn style() ui.TextStyle {
@@ -58,8 +60,19 @@ fn look(cell: screen.Cell) Look {
 
 pub fn draw(c: *ui.Context, s: *Screen, focused: bool) void {
     const m = metrics(c);
-    _ = c.open(.{ .direction = .column, .width = .fill, .grow = 1, .background = theme.background, .padding = .{ .left = pad_x, .right = pad_x, .top = pad_y, .bottom = pad_y }, .clip = true }, null);
+    const box = c.open(.{
+        .direction = .column,
+        .width = .fill,
+        .grow = 1,
+        .background = theme.background,
+        .padding = .{ .left = pad_x, .right = pad_x, .top = pad_y, .bottom = pad_y },
+        .clip = true,
+        // Its text selects unless the program has the pointer.
+        .selectable = !mouse.tracking(c, s),
+    }, null);
     defer c.end();
+    // Where its cells were drawn last frame, for the pointer's reports.
+    if (c.rects.get(c.node(box).id)) |r| s.origin = .{ r.x + pad_x, r.y + pad_y };
     const starts = c.alloc().alloc(u32, @as(usize, s.cols) + 1) catch return;
     for (0..s.rows) |y| backgrounds(c, s, y, m);
     for (0..s.rows) |y| {
@@ -137,7 +150,14 @@ fn spans(c: *ui.Context, cells: []const screen.Cell, starts: []const u32) []cons
 /// app's. Takes them from this frame's input.
 pub fn keys(c: *ui.Context, a: *Session, s: *Screen) void {
     var buf: [16]u8 = undefined;
+    mouse.pointer(c, a, s);
     wheel(c, a, s);
+    // What the program copied (its own selection), onto the clipboard.
+    if (s.copied) |text| {
+        c.clipboard.write(c.clipboard.ctx, text);
+        s.gpa.free(text);
+        s.copied = null;
+    }
     // Pasted text, marked as pasted when the program asked (vim, zsh).
     for (c.input.ops) |op| if (op == .insert) {
         if (s.bracketed_paste) a.shell.input("\x1b[200~");
@@ -206,8 +226,8 @@ pub fn keys(c: *ui.Context, a: *Session, s: *Screen) void {
     });
 }
 
-/// The wheel scrolls as the arrow keys do, a line a row's height, as
-/// terminals do for programs that do not ask for the mouse.
+/// The wheel, a line a row's height: the program's wheel buttons when it
+/// tracks the mouse, else the arrow keys, as terminals do.
 fn wheel(c: *ui.Context, a: *Session, s: *Screen) void {
     c.wants_wheel = true;
     const dy = c.input.scroll.y;
@@ -217,7 +237,7 @@ fn wheel(c: *ui.Context, a: *Session, s: *Screen) void {
     var buf: [4]u8 = undefined;
     while (@abs(s.wheel) >= m.h) {
         const up = s.wheel > 0;
-        a.shell.input(arrow(&buf, s, if (up) 'A' else 'B'));
+        if (mouse.tracking(c, s)) mouse.wheel(c, a, s, up) else a.shell.input(arrow(&buf, s, if (up) 'A' else 'B'));
         s.wheel -= if (up) m.h else -m.h;
     }
 }

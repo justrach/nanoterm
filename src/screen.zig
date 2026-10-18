@@ -25,6 +25,10 @@ pub const Cell = struct {
     attrs: Attrs = .{},
 };
 
+/// Mouse reports a program asks for: presses and releases (9, 1000),
+/// drags too (1002), every move (1003).
+pub const Mouse = enum { off, press, drag, motion };
+
 pub const Reply = struct {
     ctx: *anyopaque,
     func: *const fn (ctx: *anyopaque, bytes: []const u8) void,
@@ -79,6 +83,16 @@ pub const Screen = struct {
     done: bool = false,
     /// Points of wheel not yet sent as a line.
     wheel: f32 = 0,
+    /// The mouse reports asked for, in SGR's form (1006) or the old one.
+    mouse: Mouse = .off,
+    mouse_sgr: bool = false,
+    /// A press was reported and its release not yet; the cell last reported.
+    mouse_held: bool = false,
+    mouse_cell: [2]u16 = .{ 0xffff, 0xffff },
+    /// Where the first cell was drawn, in the window, for the pointer.
+    origin: ?[2]f32 = null,
+    /// Text the program put on the clipboard (OSC 52), for the app to copy.
+    copied: ?[]u8 = null,
 
     pub fn create(gpa: std.mem.Allocator, cols: u16, rows: u16) !*Screen {
         const s = try gpa.create(Screen);
@@ -95,6 +109,7 @@ pub const Screen = struct {
         s.gpa.free(s.cells);
         s.tabs.deinit(s.gpa);
         s.title.deinit(s.gpa);
+        if (s.copied) |t| s.gpa.free(t);
         s.gpa.destroy(s);
     }
 
