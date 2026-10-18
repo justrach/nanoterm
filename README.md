@@ -258,9 +258,10 @@ Launch options: `--cwd DIR`, `--run CMD` (repeat), `--agent graff|claude`,
 
 ## License
 
-nanoterm is licensed under the [MIT License](LICENSE). It uses CodeGraff's colors
-and runs graff, which are under CodeGraff's **modified AGPLv3**, an external
-license that MIT doesn't extend to; see
+nanoterm's own code is licensed under the [MIT License](LICENSE). The parts derived
+from CodeGraff (its colors, and the graff features, which work only with graff)
+keep CodeGraff's original **modified AGPLv3**, kept verbatim in
+[`third_party/licenses`](third_party/licenses/CodeGraff-LICENSE.txt); see
 [third-party notices](THIRD_PARTY_NOTICES.md).
 
 ## Credits
