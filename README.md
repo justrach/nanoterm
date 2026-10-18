@@ -32,14 +32,25 @@ the agent's commands run as blocks beside yours.
 
 ## Get started
 
-nanoterm builds inside nanoui, where it lives as a submodule:
+nanoterm builds on its own. It fetches nanoui, pinned by commit in
+`build.zig.zon`:
 
 ```sh
-git clone --recursive https://github.com/justrach/nanoui
-cd nanoui/apps/nanoterm
+git clone https://github.com/justrach/nanoterm
+cd nanoterm
 zig build run
 zig build run -- --cwd ~/code/app --run "git status" --agent claude --ask "What changed?"
 zig build test        # VT, zsh blocks, ACP fakes, the classifier, Jev, Luau and visuals, the view through ui.Tester
+```
+
+Working on nanoui at the same time? In a `--recursive` clone of
+[nanoui](https://github.com/justrach/nanoui), nanoterm lives under `apps/`.
+Build it there against the nanoui next to it, with your changes, using
+`--fork`:
+
+```sh
+cd nanoui/apps/nanoterm
+zig build run --fork=../..
 ```
 
 <p align="center">
