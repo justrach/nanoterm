@@ -24,8 +24,12 @@ pub fn pane(c: *ui.Context, w: *Workspace, s: *Session, rect: anytype, focused: 
     ui.key(c, c.print("pane-{d}", .{s.id}));
     const p = ui.div(c).column().w(rect.w).h(rect.h).clip();
     defer p.end();
+    const inside = if (@import("pager.zig").open) |pg| (if (pg.session == s) pg else null) else null;
     if (s.shell.fullScreen()) |screen| {
         view_screen.draw(c, screen, focused);
+    } else if (inside) |pg| {
+        // Inside a block's output: its pager, in place of the timeline.
+        @import("view_pager.zig").draw(c, pg, rect.w, rect.h);
     } else {
         s.sticky = null;
         const id = timeline(c, s);

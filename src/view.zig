@@ -15,6 +15,7 @@ const view_overlay = @import("view_overlay.zig");
 const view_find = @import("view_find.zig");
 const assist = @import("assist.zig");
 const program = @import("session_program.zig");
+const program_pager = @import("pager.zig");
 const ws_mod = @import("workspace.zig");
 const Workspace = ws_mod.Workspace;
 const Node = ws_mod.Node;
@@ -107,6 +108,8 @@ fn shortcuts(w: *Workspace, c: *ui.Context) void {
     if (c.shortcut(binds.shortcut("Cmd+-"))) w.zoomBy(-0.1);
     if (c.shortcut(binds.shortcut("Cmd+0"))) w.zoom = 1;
     if (view_find.keys(c, w)) return;
+    // Inside a block's output, the keys are the pager's.
+    if (program_pager.open) |pg| if (pg.session == s) return program_pager.keys(c, pg);
     // A full-screen program takes the keys, ⌘ combinations aside.
     if (s.shell.fullScreen()) |screen| return @import("view_screen.zig").keys(c, s, screen);
     pasteImage(c, s);
@@ -133,6 +136,8 @@ fn shortcuts(w: *Workspace, c: *ui.Context) void {
     const keys = w.shared.prefs.keys;
     // Emacs's ^P and ^N: the history, as readline has them.
     if (keys == .emacs) {
+        // M-v, a page up: into the output above.
+        if (c.shortcut(.{ .key = 'v', .alt = true })) if (program_pager.target(s)) |b| program_pager.enter(s, b);
         if (c.shortcut(.{ .key = 'p', .ctrl = true })) s.historyStep(true);
         if (c.shortcut(.{ .key = 'n', .ctrl = true })) s.historyStep(false);
     }

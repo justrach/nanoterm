@@ -111,7 +111,10 @@ pub const Workspace = struct {
         var leaves: std.ArrayList(*Node) = .empty;
         defer leaves.deinit(w.shared.gpa);
         t.tree.leaves(&leaves, w.shared.gpa) catch {};
-        for (leaves.items) |n| n.kind.leaf.destroy();
+        for (leaves.items) |n| {
+            @import("pager.zig").forget(n.kind.leaf);
+            n.kind.leaf.destroy();
+        }
         t.tree.deinit();
         w.shared.gpa.destroy(t);
     }

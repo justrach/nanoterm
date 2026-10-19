@@ -13,6 +13,7 @@ const blocks = @import("blocks.zig");
 const assist = @import("assist.zig");
 const complete = @import("complete.zig");
 const attach = @import("attach.zig");
+const pager = @import("pager.zig");
 const Session = @import("session.zig").Session;
 const Workspace = @import("workspace.zig").Workspace;
 
@@ -35,7 +36,8 @@ pub fn panel(c: *ui.Context, w: *Workspace, s: *Session, focused: bool) void {
         pictures(c, s);
         // The focused pane's input has the keyboard, unless a panel is open.
         s.input_id = c.peekId(null);
-        if (focused and w.overlay == .none and !w.finding) c.focus = s.input_id;
+        const in_pager = if (pager.open) |pg| pg.session == s else false;
+        if (focused and w.overlay == .none and !w.finding and !in_pager) c.focus = s.input_id;
         const placeholder = if (s.shell.remoteReady())
             c.print("Run on {s}, or ask {s} — it works there too", .{ s.shell.remote.?.host, s.which.label() })
         else if (s.shell.busy())
@@ -49,8 +51,11 @@ pub fn panel(c: *ui.Context, w: *Workspace, s: *Session, focused: bool) void {
         const result = ui.textField(c, &s.input, .{ .placeholder = placeholder, .width = .fill, .size = 14.5, .bare = true, .suggestion = if (focused) assist.suggestion(s) else "", .keys = w.shared.prefs.keys });
         s.caret = result.caret;
         s.vim = if (result.vim_visual) .visual else if (result.vim_normal) .normal else .insert;
-        // Vim's j and k in normal mode: through the history.
-        if (result.history != 0) s.historyStep(result.history < 0);
+        // Vim's k off the input's first line climbs into the output above
+        // (history without output); j steps forward through the history.
+        if (result.history < 0) {
+            if (pager.target(s)) |b| pager.enter(s, b) else s.historyStep(true);
+        } else if (result.history > 0) s.historyStep(false);
         if (result.changed) {
             s.history_pos = null;
             assist.typed(s, result.caret);
@@ -88,6 +93,7 @@ fn actions(c: *ui.Context, w: *Workspace, s: *Session) void {
             .visual => "VISUAL",
         }, .{ .size = 10.5, .weight = .bold, .mono = true, .color = theme.accent });
     }
+    if (s.vim == .normal and pager.target(s) != null) ui.text(c, "k: into the output", .{ .size = 11, .color = theme.faint });
     if (s.mode() == .agent) if (assist.attached(s)) |b| {
         // The selected block goes with the prompt; ✕ leaves it out.
         const d = ui.div(c).row().gap(5).itemsCenter().px(8).py(3).roundedFull().bg(theme.agent.alpha(0.12));

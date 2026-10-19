@@ -108,6 +108,8 @@ fn header(c: *ui.Context, app: *App, b: *blocks.Block, hovered: bool) void {
         if (ui.button(c, if (b.raw) "Rendered" else "Raw", .{ .variant = .ghost, .size = 11, .icon = icon }).clicked) b.raw = !b.raw;
     }
     if (hovered and b.output.lineCount() > 0) {
+        // Inside the output: a cursor over its text, with the input's keys.
+        if (ui.button(c, "", .{ .variant = .ghost, .size = 11, .icon = "text.viewfinder" }).clicked) @import("pager.zig").enter(app, b);
         if (ui.button(c, "", .{ .variant = .ghost, .size = 11, .icon = "doc.on.doc" }).clicked) {
             const text = b.output.plainText(app.gpa) catch return;
             defer app.gpa.free(text);
