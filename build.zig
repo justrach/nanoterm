@@ -45,6 +45,15 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     }) });
+    // A video of nanoterm, rendered offscreen (src/video.zig).
+    const video = b.addExecutable(.{ .name = "nanoterm-video", .root_module = b.createModule(.{
+        .root_source_file = b.path("src/video.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "nanoui", .module = nanoui }},
+    }) });
+    b.step("video", "Build zig-out/bin/nanoterm-video").dependOn(&b.addInstallArtifact(video, .{}).step);
+
     const bench = b.step("bench", "Build the terminal benchmark (bench/README.md)");
     bench.dependOn(&b.addInstallArtifact(runner, .{}).step);
     bench.dependOn(&b.addInstallArtifact(termbench, .{}).step);
