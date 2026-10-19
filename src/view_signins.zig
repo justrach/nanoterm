@@ -1,80 +1,94 @@
-//! graff's own sign-ins, under graff in Settings' agents (and onboarding's):
-//! bring a ChatGPT, xAI, Kimi or Z.ai account and graff runs on your plan,
-//! no credits needed. Each signs in with `graff login <provider>` in a new
-//! tab (the browser opens). Whether one is signed in comes from graff's
-//! models over ACP (catalog.zig: only signed-in providers' models), once
-//! graff has said; until then each simply offers its sign-in.
+//! Settings' "graff providers", as Harness's accounts screen has them:
+//! ChatGPT, xAI, Kimi and Z.AI, each with whether graff is signed in to it
+//! (graff_logins.zig reads graff's own credential files), Sign in (Continue
+//! with ChatGPT; Sign in again once signed in) and a trash button to sign
+//! out. A sign-in under way shows graff's code to confirm (xAI, Kimi) and the
+//! page it opened; a failed one, graff's own reason.
 const std = @import("std");
 const nanoui = @import("nanoui");
 const ui = nanoui.ui;
 const theme = @import("theme.zig");
 const marks = @import("marks.zig");
-const catalog = @import("catalog.zig");
+const gl = @import("graff_logins.zig");
+const agents = @import("agents.zig");
+const proc = @import("proc.zig");
 const Workspace = @import("workspace.zig").Workspace;
 
-pub const Provider = struct {
-    name: []const u8,
-    login: []const u8,
-    lab: []const u8,
-    /// graff's provider ids for it.
-    ids: []const []const u8,
-};
-
-pub const providers = [_]Provider{
-    .{ .name = "ChatGPT", .login = "graff login chatgpt", .lab = "openai", .ids = &.{ "chatgpt", "chatgpt-new", "codex" } },
-    .{ .name = "xAI", .login = "graff login xai", .lab = "xai", .ids = &.{"xai"} },
-    .{ .name = "Kimi", .login = "graff login kimi", .lab = "moonshot", .ids = &.{"kimi"} },
-    .{ .name = "Z.ai", .login = "graff login zai", .lab = "zai", .ids = &.{"zai"} },
-};
-
-/// Signed in, not, or not known yet (graff hasn't listed its models).
-pub fn signedIn(cat: *const catalog.Catalog, p: Provider) ?bool {
-    if (cat.acp != .answered) return null;
-    for (cat.models.items) |m| for (p.ids) |id| {
-        if (std.mem.eql(u8, m.provider, id)) return true;
-    };
-    return false;
+/// graff on PATH or where its installer puts it.
+fn graffPath(c: *ui.Context, w: *Workspace) ?[]const u8 {
+    const path = agents.searchPath(c.alloc(), w.shared.env.get("PATH") orelse "", w.shared.home);
+    return proc.which(c.alloc(), w.shared.io, path, "graff");
 }
 
-/// The sign-ins, under graff's row; `run` starts a command in a new tab.
-pub fn list(c: *ui.Context, w: *Workspace, comptime run: fn (*Workspace, []const u8) void) void {
-    const box = ui.div(c).column().wFull().gap(10).pl(33).pb(4);
-    defer box.end();
+/// The section, its rows in a `card` like Settings' others.
+pub fn section(c: *ui.Context, w: *Workspace, comptime card: fn (*ui.Context) ui.Div) void {
+    const logins = &w.shared.prefs.graff;
     {
-        const t = ui.div(c).column().gap(2);
-        defer t.end();
-        ui.text(c, "Bring your own sign-ins", .{ .size = 12.5, .weight = .semibold });
-        ui.text(c, "graff runs on your plan with any of these, no credits needed.", .{ .size = 11.5, .color = theme.muted });
+        const h = ui.div(c).row().gap(8).itemsCenter().pt(8);
+        defer h.end();
+        _ = ui.image(c, .{ .key = "graff-providers-mark", .bytes = marks.agent(.graff), .max_width = 16, .max_height = 16, .radius = 0, .tint = theme.muted });
+        ui.text(c, "graff providers", .{ .size = 12, .weight = .semibold, .color = theme.muted });
     }
-    const row = ui.div(c).row().gap(6);
-    defer row.end();
-    for (providers) |p| {
-        ui.key(c, c.print("signin-{s}", .{p.lab}));
-        const on = signedIn(&w.shared.catalog, p) orelse false;
-        var chip = ui.div(c).row().gap(6).itemsCenter().px(9).py(6).rounded(8).border(if (on) theme.success.alpha(0.5) else theme.border);
-        chip = if (on) chip.bg(theme.success.alpha(0.08)) else chip.control().hover(theme.block_hover);
-        defer chip.end();
-        if (!on and chip.clicked()) run(w, p.login);
-        if (marks.of(p.lab)) |png| _ = ui.image(c, .{ .key = c.print("signin-mark-{s}", .{p.lab}), .bytes = png, .max_width = 14, .max_height = 14, .radius = 0, .tint = theme.text });
-        ui.text(c, if (on) c.print("{s} · signed in", .{p.name}) else c.print("Sign in with {s}", .{p.name}), .{ .size = 12, .weight = .medium, .color = if (on) theme.success else theme.text });
+    ui.text(c, "Bring your own sign-ins: graff runs on your plan, no credits needed.", .{ .size = 11.5, .color = theme.faint, .wrap = true });
+    const b = card(c);
+    defer b.end();
+    for (gl.providers, 0..) |p, i| {
+        ui.key(c, c.print("graff-login-{s}", .{p.id}));
+        if (i > 0) _ = c.leaf(.{ .width = .fill, .height = .{ .px = 1 }, .background = theme.border }, .none, null);
+        const st = gl.status(c.alloc(), w.shared.io, logins.home, p.id);
+        const flow: ?*gl.Flow = if (logins.flow) |f| (if (std.mem.eql(u8, f.id, p.id)) f else null) else null;
+        const r = ui.div(c).row().wFull().gap(10).itemsCenter();
+        defer r.end();
+        {
+            const m = ui.div(c).w(22).h(22).center();
+            defer m.end();
+            if (marks.of(p.lab)) |png| _ = ui.image(c, .{ .key = c.print("graff-login-mark-{s}", .{p.id}), .bytes = png, .max_width = 18, .max_height = 18, .radius = 0, .tint = if (st.signed_in) theme.text else theme.faint });
+        }
+        {
+            const t = ui.div(c).column().grow().gap(2);
+            defer t.end();
+            ui.text(c, p.name, .{ .size = 13.5, .weight = .semibold });
+            statusLine(c, logins, p, st, flow);
+        }
+        if (flow) |f| {
+            if (f.signing_out) continue;
+            if (gl.scanUrl(f.output.items)) |url| if (ui.button(c, "Open page", .{ .variant = .ghost, .size = 12 }).clicked) {
+                _ = nanoui.shell.openUrl(url);
+            };
+            if (ui.button(c, "Cancel", .{ .variant = .ghost, .size = 12 }).clicked) logins.cancel();
+            continue;
+        }
+        if (st.signed_in and ui.button(c, "", .{ .variant = .ghost, .size = 12, .icon = "trash" }).clicked) {
+            logins.signOut(graffPath(c, w), w.shared.env_list, p.id);
+        }
+        const label = if (std.mem.eql(u8, p.id, "chatgpt-new")) "Continue with ChatGPT" else if (st.signed_in) "Sign in again" else "Sign in";
+        if (ui.button(c, label, .{ .variant = .primary, .size = 12 }).clicked) {
+            if (graffPath(c, w)) |g| logins.start(g, w.shared.env_list, p.id) catch {};
+        }
     }
 }
 
-test "a provider is signed in when graff lists its models" {
-    var cat: catalog.Catalog = .{ .gpa = std.testing.allocator };
-    defer cat.deinit();
-    try std.testing.expect(signedIn(&cat, providers[0]) == null);
-    const json =
-        \\{"models":[{"provider":"chatgpt-new","name":"gpt","authenticated":true,"cost":"plan"},
-        \\ {"provider":"zai","name":"glm","authenticated":true,"cost":"plan"},
-        \\ {"provider":"xai","name":"grok","authenticated":false,"cost":"plan"}]}
-    ;
-    const parsed = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, json, .{});
-    defer parsed.deinit();
-    try cat.fromAcp(parsed.value);
-    cat.acp = .answered;
-    try std.testing.expectEqual(@as(?bool, true), signedIn(&cat, providers[0]));
-    try std.testing.expectEqual(@as(?bool, false), signedIn(&cat, providers[1]));
-    try std.testing.expectEqual(@as(?bool, false), signedIn(&cat, providers[2]));
-    try std.testing.expectEqual(@as(?bool, true), signedIn(&cat, providers[3]));
+fn statusLine(c: *ui.Context, logins: *const gl.Logins, p: gl.Provider, st: gl.Status, flow: ?*gl.Flow) void {
+    const small: ui.TextStyle = .{ .size = 11.5, .color = theme.muted, .wrap = true };
+    if (flow) |f| {
+        if (f.signing_out) return ui.text(c, "Signing out…", small);
+        const row = ui.div(c).row().gap(8).itemsCenter();
+        defer row.end();
+        ui.text(c, if (gl.scanUrl(f.output.items) == null) "Starting the sign-in…" else "Finish in your browser", .{ .size = 11.5, .color = theme.muted });
+        if (gl.scanCode(f.output.items)) |code| {
+            const chip = ui.div(c).px(7).py(2).rounded(5).bg(theme.accent.alpha(0.14));
+            defer chip.end();
+            ui.text(c, c.print("Code {s}", .{code}), .{ .size = 11.5, .mono = true, .weight = .semibold, .color = theme.accent });
+        }
+        return;
+    }
+    if (std.mem.eql(u8, logins.failed_id, p.id) and logins.failed.items.len > 0) {
+        return ui.text(c, logins.failed.items, .{ .size = 11.5, .color = theme.failure, .wrap = true });
+    }
+    if (st.plan_off) return ui.text(c, gl.plan_off_message, small);
+    if (st.signed_in) {
+        if (st.account.len > 0) return ui.text(c, c.print("Signed in as {s}", .{st.account}), small);
+        return ui.text(c, "Signed in on this device", small);
+    }
+    ui.text(c, "Not signed in", small);
 }

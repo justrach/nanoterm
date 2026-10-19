@@ -31,9 +31,11 @@ pub const Prefs = struct {
     installed: std.EnumArray(Which, bool) = .initFill(false),
     /// Anonymous usage analytics, sent only when `analytics` is on.
     telemetry: @import("analytics.zig").Client,
+    /// graff's own provider sign-ins (ChatGPT, xAI, Kimi, Z.AI).
+    graff: @import("graff_logins.zig").Logins,
 
     pub fn init(gpa: std.mem.Allocator, io: std.Io, arena: std.mem.Allocator, home: []const u8, env: *std.process.Environ.Map) Prefs {
-        var p: Prefs = .{ .gpa = gpa, .io = io, .account = .init(gpa, io, home, env), .telemetry = .init(gpa, env) };
+        var p: Prefs = .{ .gpa = gpa, .io = io, .account = .init(gpa, io, home, env), .telemetry = .init(gpa, env), .graff = .{ .gpa = gpa, .io = io, .home = home } };
         p.path = std.fs.path.join(arena, &.{ home, "Library", "Application Support", "nanoterm", "settings.json" }) catch "";
         const data = std.Io.Dir.cwd().readFileAlloc(io, p.path, gpa, .limited(64 * 1024)) catch return p;
         defer gpa.free(data);
@@ -54,6 +56,7 @@ pub const Prefs = struct {
     pub fn deinit(p: *Prefs) void {
         p.account.deinit();
         p.telemetry.deinit();
+        p.graff.deinit();
     }
 
     /// Records an anonymous usage event, if the user shares analytics.

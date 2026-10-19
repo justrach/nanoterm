@@ -114,6 +114,7 @@ pub const Shared = struct {
         s.catalog.changed = .{ .ctx = s, .func = redrawCtx };
         s.pictures.changed = .{ .ctx = s, .func = redrawCtx };
         s.prefs.account.changed = .{ .ctx = s, .func = redrawCtx };
+        s.prefs.graff.changed = .{ .ctx = s, .func = redrawCtx };
         s.prefs.account.key_changed = .{ .ctx = &s.jev, .func = @import("jev.zig").Jev.setKey };
         s.prefs.account.load();
     }

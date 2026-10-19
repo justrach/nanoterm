@@ -159,9 +159,10 @@ test "the Settings page: account, agents, appearance, updates" {
     try std.testing.expect(t.hasText("Sign in with Codegraff"));
     try std.testing.expect(t.hasText("Codex") and t.hasText("opencode") and t.hasText("Hermes"));
     try std.testing.expect(t.hasText("Default"));
-    // graff installed: the sign-ins it brings, under it.
-    try std.testing.expect(t.hasText("Bring your own sign-ins"));
-    try std.testing.expect(t.hasText("Sign in with ChatGPT") and t.hasText("Sign in with xAI") and t.hasText("Sign in with Kimi") and t.hasText("Sign in with Z.ai"));
+    // graff installed: its providers, as Harness lists them.
+    try std.testing.expect(t.hasText("graff providers"));
+    try std.testing.expect(t.hasText("ChatGPT") and t.hasText("xAI") and t.hasText("Kimi") and t.hasText("Z.AI"));
+    try std.testing.expect(t.hasText("Continue with ChatGPT") and t.hasText("Not signed in"));
     try std.testing.expect(t.containsText("doesn't update itself"));
     try t.screenshot("/tmp/nanoterm-settings.png");
 }

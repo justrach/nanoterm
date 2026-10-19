@@ -100,7 +100,6 @@ pub const Workspace = struct {
     pub fn openSettings(w: *Workspace) void {
         w.overlay = if (w.overlay == .settings) .none else .settings;
         if (w.overlay == .settings) w.shared.prefs.refresh(w.shared.env);
-        if (w.overlay == .settings and w.shared.prefs.installed.get(.graff)) w.shared.loadCatalog();
     }
 
     pub fn closeOverlay(w: *Workspace) void {

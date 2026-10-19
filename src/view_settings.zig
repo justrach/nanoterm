@@ -89,7 +89,6 @@ pub fn agentList(c: *ui.Context, w: *Workspace) void {
     const s = section(c, "Agents");
     defer s.end();
     const b = box(c);
-    defer b.end();
     const prefs = &w.shared.prefs;
     {
         // Off: a terminal and nothing else.
@@ -104,10 +103,8 @@ pub fn agentList(c: *ui.Context, w: *Workspace) void {
         var on = prefs.agents;
         if (ui.toggle(c, "", &on)) prefs.setAgents(on);
     }
-    if (!prefs.agents) return;
+    if (!prefs.agents) return b.end();
     for (agents.all, 0..) |info, i| {
-        // Under graff (installed): the sign-ins it can bring.
-        if (i > 0 and agents.all[i - 1].which == .graff and prefs.installed.get(.graff)) @import("view_signins.zig").list(c, w, runInTab);
         ui.key(c, c.print("agent-{d}", .{i}));
         _ = c.leaf(.{ .width = .fill, .height = .{ .px = 1 }, .background = theme.border }, .none, null);
         const r = ui.div(c).row().wFull().gap(10).itemsCenter();
@@ -143,6 +140,9 @@ pub fn agentList(c: *ui.Context, w: *Workspace) void {
         }
     }
     ui.text(c, "New tabs start with the default agent; ⌘⇧M switches the one a pane uses.", .{ .size = 11.5, .color = theme.faint });
+    b.end();
+    // graff's own sign-ins, as Harness lists them.
+    if (prefs.installed.get(.graff)) @import("view_signins.zig").section(c, w, box);
 }
 
 /// Runs `command` in a new tab (an installer, a sign-in), and closes Settings.

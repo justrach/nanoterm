@@ -40,6 +40,8 @@ test {
     _ = @import("tests_followup.zig");
     _ = @import("tests_pager.zig");
     _ = @import("view_signins.zig");
+    _ = @import("graff_logins.zig");
+    _ = @import("tests_graff_logins.zig");
     _ = @import("analytics.zig");
     _ = @import("tests_screen.zig");
     _ = @import("split.zig");
