@@ -131,8 +131,10 @@ fn shortcuts(w: *Workspace, c: *ui.Context) void {
         return;
     }
     if (c.shortcut(.{ .key = S.tab })) assist.tab(s, s.caret);
-    if (c.shortcut(.{ .key = S.up })) s.historyStep(true);
-    if (c.shortcut(.{ .key = S.down })) s.historyStep(false);
+    // ↑ on the input's first line, ↓ on its last: the history; else the
+    // input moves between its lines.
+    if (s.input_lines[0] == 0 and c.shortcut(.{ .key = S.up })) s.historyStep(true);
+    if (s.input_lines[0] + 1 >= s.input_lines[1] and c.shortcut(.{ .key = S.down })) s.historyStep(false);
     const keys = w.shared.prefs.keys;
     // Emacs's ^P and ^N: the history, as readline has them.
     if (keys == .emacs) {

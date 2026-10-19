@@ -145,7 +145,17 @@ pub const Shell = struct {
         // questions (where the cursor is, its colors).
         block.output.resize(s.cols, s.rows);
         block.output.reply = .{ .ctx = s, .func = reply };
-        s.process.send(block.command);
+        s.sendLine(block.command);
+    }
+
+    /// Sends a command line and Return. One of several lines goes as a
+    /// paste (bracketed, as zsh asks at its prompt): zsh takes it whole, one
+    /// command and one block, not a line at a time.
+    fn sendLine(s: *Shell, text: []const u8) void {
+        const lines = std.mem.indexOfScalar(u8, text, '\n') != null;
+        if (lines) s.process.send("\x1b[200~");
+        s.process.send(text);
+        if (lines) s.process.send("\x1b[201~");
         s.process.send("\n");
     }
 
@@ -154,8 +164,7 @@ pub const Shell = struct {
         s.current = block;
         block.output.resize(s.cols, s.rows);
         block.output.reply = .{ .ctx = s, .func = reply };
-        s.process.send(text);
-        s.process.send("\n");
+        s.sendLine(text);
     }
 
     /// The block `session` is an SSH session to `host`, opened by `command`.

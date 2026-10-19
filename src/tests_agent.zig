@@ -99,8 +99,8 @@ test "Jev decides what the rules could not, from its answer" {
     try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = dir ++ "/answer.json", .data = "{\"answers\":{\"q1\":{\"type\":\"choice\",\"choice\":\"agent\",\"confidence\":0.8}}}" });
     var j: jev_mod.Jev = .{ .gpa = gpa, .key = try gpa.dupe(u8, "test-key"), .endpoint = "file://" ++ dir ++ "/answer.json" };
     defer j.deinit();
-    j.ask("tidy up the readme");
-    j.ask("tidy up the readme a bit");
+    j.ask("tidy up the readme", .{});
+    j.ask("tidy up the readme a bit", .{});
     try pumpUntil(&j, struct {
         fn f(x: *jev_mod.Jev) bool {
             return x.answer("tidy up the readme a bit") != null or x.down;
@@ -115,13 +115,13 @@ test "Jev decides what the rules could not, from its answer" {
     // A failed call turns Jev off for the session.
     var bad: jev_mod.Jev = .{ .gpa = gpa, .key = try gpa.dupe(u8, "test-key"), .endpoint = "file://" ++ dir ++ "/missing.json" };
     defer bad.deinit();
-    bad.ask("tidy up the readme");
+    bad.ask("tidy up the readme", .{});
     try pumpUntil(&bad, struct {
         fn f(x: *jev_mod.Jev) bool {
             return x.down;
         }
     }.f);
-    bad.ask("something else entirely");
+    bad.ask("something else entirely", .{});
     try std.testing.expectEqual(@as(usize, 1), bad.calls);
 }
 

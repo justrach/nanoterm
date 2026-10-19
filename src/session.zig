@@ -216,10 +216,10 @@ pub const Session = struct {
     /// into view once.
     pin: ?usize = null,
     pin_jump: u2 = 0,
-    /// The id of its input in the last frame, for the focus.
+    /// Its input in the last frame: id (the focus), caret (Tab), the caret's line of how many (↑, ↓).
     input_id: u64 = 0,
-    /// The caret in its input in the last frame, for Tab.
     caret: usize = 0,
+    input_lines: [2]usize = .{ 0, 1 },
     /// Where its pane was laid out in the last frame.
     rect: split.Rect = .{},
     rows: u16 = 40,
@@ -402,7 +402,7 @@ pub const Session = struct {
         a.guessed = h;
         a.guess = classify.guess(text, &a.shared.commands, a.followUp());
         if (a.lock != null or a.shell.busy()) return;
-        if (a.shared.prefs.agents and !a.guess.sure and std.mem.indexOfScalar(u8, std.mem.trim(u8, text, " "), ' ') != null) a.shared.jev.ask(text);
+        if (a.shared.prefs.agents and !a.guess.sure and std.mem.indexOfScalar(u8, std.mem.trim(u8, text, " "), ' ') != null) a.shared.jev.ask(text, .{ .installed = a.shared.commands.has(classify.firstWord(text)), .follow_up = a.followUp() });
         // Ready before Return is pressed.
         if (a.mode() == .agent and a.guess.sure and a.agent == null) _ = a.ensureAgent();
     }

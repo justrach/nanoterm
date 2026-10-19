@@ -48,8 +48,11 @@ pub fn panel(c: *ui.Context, w: *Workspace, s: *Session, focused: bool) void {
             "Run a command"
         else
             "Run a command, or ask the agent anything";
-        const result = ui.textField(c, &s.input, .{ .placeholder = placeholder, .width = .fill, .size = 14.5, .bare = true, .suggestion = if (focused) assist.suggestion(s) else "", .keys = w.shared.prefs.keys });
+        // Harness's composer: lines wrap and the pill grows, then scrolls;
+        // Shift-Return starts a line.
+        const result = ui.textField(c, &s.input, .{ .placeholder = placeholder, .width = .fill, .size = 14.5, .bare = true, .suggestion = if (focused) assist.suggestion(s) else "", .keys = w.shared.prefs.keys, .multiline = true, .max_lines = 10 });
         s.caret = result.caret;
+        s.input_lines = .{ result.line, result.lines };
         s.vim = if (result.vim_visual) .visual else if (result.vim_normal) .normal else .insert;
         // Vim's k off the input's first line climbs into the output above
         // (history without output); j steps forward through the history.

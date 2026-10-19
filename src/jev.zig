@@ -1,6 +1,8 @@
 //! Codegraff's Jev, asked what the input is when the rules are not sure:
-//! one "choice" question (shell or agent) about a redacted copy of what is
-//! typed, as graff asks Jev for a turn's effort. It is asked while typing,
+//! one "choice" question (shell or agent) about the shape of what is typed
+//! (`classify.shape`: its words, flags and pipes, private parts as markers)
+//! and two facts (whether its first word is an installed program, whether
+//! the agent answered last), as graff asks Jev for a turn's effort. It is asked while typing,
 //! once typing pauses, one question at a time; answers are kept per text.
 //! A failed call (no login, no credits, offline) turns it off for the
 //! session, as graff's circuit does. The request goes through curl, which
@@ -14,6 +16,14 @@ pub const default_endpoint = "https://gateway.codegraff.com/v1/systemone";
 /// How long typing must pause before Jev is asked.
 const pause_ms = 350;
 
+/// What Jev is told besides the text's shape.
+pub const Facts = struct {
+    /// Its first word is a program on PATH.
+    installed: bool = false,
+    /// The coding agent answered last: a reply is likelier.
+    follow_up: bool = false,
+};
+
 pub const Jev = struct {
     gpa: std.mem.Allocator,
     /// The Codegraff login (`graff login`); null turns Jev off.
@@ -25,6 +35,8 @@ pub const Jev = struct {
     /// What to ask next, once typing pauses; and what is being asked.
     want: ?[]u8 = null,
     asking: ?[]u8 = null,
+    /// The facts about `want`.
+    facts: Facts = .{},
     /// Pause timers scheduled and not yet run.
     timers: u32 = 0,
     process: proc.Process = undefined,
@@ -80,7 +92,7 @@ pub const Jev = struct {
     }
 
     /// Asks about `text` once typing pauses (the latest text wins).
-    pub fn ask(j: *Jev, text_in: []const u8) void {
+    pub fn ask(j: *Jev, text_in: []const u8, facts: Facts) void {
         const text = std.mem.trim(u8, text_in, " \t");
         if (!j.available() or text.len == 0 or j.answers.contains(text)) return;
         if (j.want) |w| {
@@ -88,6 +100,7 @@ pub const Jev = struct {
             j.gpa.free(w);
         }
         j.want = j.gpa.dupe(u8, text) catch null;
+        j.facts = facts;
         j.timers += 1;
         nanoui.App.after(pause_ms, j, paused);
     }
@@ -104,30 +117,31 @@ pub const Jev = struct {
         const text = j.want orelse return;
         j.want = null;
         if (j.answers.contains(text)) return j.gpa.free(text);
-        var buf: [280]u8 = undefined;
-        const safe = classify.redact(&buf, text);
+        var buf: [400]u8 = undefined;
+        const safe = classify.shape(&buf, text);
         if (safe.len == 0) return j.gpa.free(text);
         j.asking = text;
-        j.request(safe) catch {
+        j.request(safe, j.facts) catch {
             j.gpa.free(text);
             j.asking = null;
             j.down = true;
         };
     }
 
-    fn request(j: *Jev, safe: []const u8) !void {
+    fn request(j: *Jev, safe: []const u8, facts: Facts) !void {
         var arena_state: std.heap.ArenaAllocator = .init(j.gpa);
         defer arena_state.deinit();
         const arena = arena_state.allocator();
+        const state = try stateOf(arena, safe, facts);
         const body = try std.json.Stringify.valueAlloc(arena, .{
             .model = "jev-latest",
-            .state = safe,
+            .state = state,
             .questions = .{ .q1 = .{
                 .type = "choice",
-                .instructions = "This was typed into a terminal that runs shell commands and also talks to a coding agent. Choose what it is.",
+                .instructions = instructions,
                 .criteria = .{
-                    .shell = "A shell command, to be run as typed",
-                    .agent = "A request in natural language, for the coding agent",
+                    .shell = "A shell command or script, run as typed: a program and its arguments, flags, paths, pipes or redirections",
+                    .agent = "A request, question or reply in natural language for the coding agent, even when it names commands, files or paths",
                 },
             } },
         }, .{});
@@ -171,6 +185,15 @@ pub const Jev = struct {
         if (j.want != null and j.timers == 0) j.start();
     }
 
+    const instructions = "Text was typed into a terminal's one input, which runs shell commands and also sends requests to a coding agent. " ++
+        "Private parts of it are replaced by markers: <path>, <file>, <url>, <email>, <text> (quoted), <value>, <number>, <token>, <var>. " ++
+        "Choose what it is.";
+
+    /// What Jev reads: the text's shape and the facts about it.
+    pub fn stateOf(arena: std.mem.Allocator, safe: []const u8, facts: Facts) ![]const u8 {
+        return std.fmt.allocPrint(arena, "Typed: {s}\nIts first word is an installed program: {s}\nThe coding agent answered last: {s}", .{ safe, if (facts.installed) "yes" else "no", if (facts.follow_up) "yes" else "no" });
+    }
+
     /// The choice in Jev's reply: {"answers":{"q1":{"choice":"agent",…}}}.
     pub fn parse(gpa: std.mem.Allocator, reply: []const u8) ?classify.Kind {
         const parsed = std.json.parseFromSlice(std.json.Value, gpa, reply, .{}) catch return null;
@@ -182,6 +205,14 @@ pub const Jev = struct {
         return std.meta.stringToEnum(classify.Kind, choice.string);
     }
 };
+
+test "what Jev reads" {
+    var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena.deinit();
+    var buf: [400]u8 = undefined;
+    const state = try Jev.stateOf(arena.allocator(), classify.shape(&buf, "docker run -it -v ~/src:/src ubuntu"), .{ .installed = true });
+    try std.testing.expectEqualStrings("Typed: docker run -it -v <path> ubuntu\nIts first word is an installed program: yes\nThe coding agent answered last: no", state);
+}
 
 test "Jev's reply" {
     const gpa = std.testing.allocator;
