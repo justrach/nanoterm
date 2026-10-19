@@ -14,6 +14,7 @@ const view_pane = @import("view_pane.zig");
 const view_overlay = @import("view_overlay.zig");
 const view_find = @import("view_find.zig");
 const assist = @import("assist.zig");
+const program = @import("session_program.zig");
 const ws_mod = @import("workspace.zig");
 const Workspace = ws_mod.Workspace;
 const Node = ws_mod.Node;
@@ -112,6 +113,8 @@ fn shortcuts(w: *Workspace, c: *ui.Context) void {
     if (c.shortcut(binds.shortcut("Cmd+I"))) s.toggleMode();
     if (c.shortcut(binds.shortcut("Cmd+K"))) s.clear();
     if (c.shortcut(.{ .key = 'c', .ctrl = true })) s.interrupt();
+    // ^D on an empty input: the program's end of input, as in a terminal.
+    if (s.input.len == 0 and program.reading(s) and c.shortcut(.{ .key = 'd', .ctrl = true })) program.eof(s);
     if (c.shortcut(binds.shortcut("Cmd+Up"))) selectBlock(s, -1);
     if (c.shortcut(binds.shortcut("Cmd+Down"))) selectBlock(s, 1);
     if (s.menu.open) {
@@ -134,7 +137,7 @@ fn shortcuts(w: *Workspace, c: *ui.Context) void {
         if (c.shortcut(.{ .key = 'n', .ctrl = true })) s.historyStep(false);
     }
     // Vim's Esc in insert mode is the input's (to normal mode).
-    if (keys == .vim and !s.vim_normal) return;
+    if (keys == .vim and s.vim == .insert) return;
     if (c.shortcut(.{ .key = S.escape })) {
         if (s.agent) |ag| if (ag.status == .working) return ag.cancel();
         if (s.selected != null) {

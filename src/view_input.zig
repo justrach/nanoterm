@@ -48,7 +48,7 @@ pub fn panel(c: *ui.Context, w: *Workspace, s: *Session, focused: bool) void {
             "Run a command, or ask the agent anything";
         const result = ui.textField(c, &s.input, .{ .placeholder = placeholder, .width = .fill, .size = 14.5, .bare = true, .suggestion = if (focused) assist.suggestion(s) else "", .keys = w.shared.prefs.keys });
         s.caret = result.caret;
-        s.vim_normal = result.vim_normal;
+        s.vim = if (result.vim_visual) .visual else if (result.vim_normal) .normal else .insert;
         // Vim's j and k in normal mode: through the history.
         if (result.history != 0) s.historyStep(result.history < 0);
         if (result.changed) {
@@ -77,10 +77,10 @@ fn actions(c: *ui.Context, w: *Workspace, s: *Session) void {
         ui.icon(c, "paperclip", .{ .size = 13, .color = theme.muted });
     }
     modePill(c, s);
-    if (s.vim_normal) {
+    if (s.vim != .insert) {
         const d = ui.div(c).row().px(8).py(3).rounded(6).bg(theme.accent.alpha(0.16));
         defer d.end();
-        ui.text(c, "NORMAL", .{ .size = 10.5, .weight = .bold, .mono = true, .color = theme.accent });
+        ui.text(c, if (s.vim == .visual) "VISUAL" else "NORMAL", .{ .size = 10.5, .weight = .bold, .mono = true, .color = theme.accent });
     }
     if (s.mode() == .agent) if (assist.attached(s)) |b| {
         // The selected block goes with the prompt; ✕ leaves it out.

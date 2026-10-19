@@ -50,14 +50,21 @@ test "onboarding: how to start, the input's keys, analytics asked; the answers k
     const t = &f.t;
     const p = &f.shared.prefs;
     try std.testing.expect(!p.onboarded);
+    std.Io.Dir.cwd().createDirPath(std.testing.io, "/tmp/nanoterm-onboarding") catch {};
     try std.testing.expectEqual(settings.Analytics.unset, p.analytics);
     f.w.overlay = .onboarding;
     t.settle(1);
     try std.testing.expect(t.hasText("Welcome to nanoterm"));
     try std.testing.expect(t.hasText("Sign in with Codegraff"));
-    try std.testing.expect(t.containsText("$1 in free credits"));
+    try std.testing.expect(t.containsText("One sign-in"));
     try std.testing.expect(t.hasText("Connect your own agents") and t.hasText("Just the terminal"));
-    try t.screenshot("/tmp/nanoterm-onboarding-start.png");
+    try t.screenshot("/tmp/nanoterm-onboarding/1-start.png");
+    f.w.onboarding = .agents;
+    t.settle(1);
+    try std.testing.expect(t.hasText("Connect your agents"));
+    try t.screenshot("/tmp/nanoterm-onboarding/2-agents.png");
+    f.w.onboarding = .start;
+    t.settle(0.5);
     // Esc and a click outside don't skip it.
     _ = t.shortcut(.{ .key = ui.Shortcut.escape });
     t.click(8, 8);
@@ -70,10 +77,11 @@ test "onboarding: how to start, the input's keys, analytics asked; the answers k
     try t.clickText("Vim");
     t.settle(0.5);
     try std.testing.expectEqual(ui.Keymap.vim, p.keys);
+    try t.screenshot("/tmp/nanoterm-onboarding/3-keys.png");
     try t.clickText("Continue");
     t.settle(0.5);
     try std.testing.expect(t.hasText("Help make nanoterm better") and t.hasText("Privacy Policy"));
-    try t.screenshot("/tmp/nanoterm-onboarding-analytics.png");
+    try t.screenshot("/tmp/nanoterm-onboarding/4-analytics.png");
     try t.clickText("Don't share");
     t.settle(0.5);
     try std.testing.expectEqual(ws_mod.Overlay.none, f.w.overlay);
@@ -109,14 +117,14 @@ test "the keys chosen reach the input: Vim's normal mode, Emacs's kill and yank"
     t.settle(0.2);
     try std.testing.expect(t.shortcut(.{ .key = ui.Shortcut.escape }));
     t.settle(0.2);
-    try std.testing.expect(s.vim_normal);
+    try std.testing.expect(s.vim == .normal);
     try std.testing.expect(t.hasText("NORMAL"));
     t.typeText("bdw");
     t.settle(0.2);
     try std.testing.expectEqualStrings("echo hi ", s.input.text());
     t.typeText("A!");
     t.settle(0.2);
-    try std.testing.expect(!s.vim_normal);
+    try std.testing.expect(s.vim == .insert);
     try std.testing.expectEqualStrings("echo hi !", s.input.text());
 
     f.shared.prefs.setKeys(.emacs);
@@ -126,4 +134,59 @@ test "the keys chosen reach the input: Vim's normal mode, Emacs's kill and yank"
     try std.testing.expect(t.shortcut(.{ .key = 'y', .ctrl = true }));
     t.settle(0.2);
     try std.testing.expectEqualStrings("echo hi !", s.input.text());
+}
+
+fn until(f: *Fixture, comptime done: fn (*session_mod.Session) bool) !void {
+    const s = f.w.focused();
+    var waited: f64 = 0;
+    while (!done(s)) : (waited += 0.02) {
+        if (waited > 10) return error.Timeout;
+        nanoui.runFor(0.02);
+        f.t.frame();
+    }
+}
+
+test "inside cat: the keys edit the line, Return sends it as typed, ^D ends it" {
+    var f: Fixture = undefined;
+    try f.init("/tmp/nanoterm-test-cat");
+    defer f.deinit();
+    const t = &f.t;
+    const s = f.w.focused();
+    const program = @import("session_program.zig");
+    f.shared.prefs.setKeys(.emacs);
+    try until(&f, struct {
+        fn ok(x: *session_mod.Session) bool {
+            return x.shell.cwd.items.len > 0 and !x.shell.busy();
+        }
+    }.ok);
+    s.run("cat");
+    try until(&f, struct {
+        fn ok(x: *session_mod.Session) bool {
+            return @import("session_program.zig").reading(x);
+        }
+    }.ok);
+    try std.testing.expect(t.hasText("Input for the running command"));
+    t.typeText("hello brave world");
+    try std.testing.expect(t.shortcut(.{ .key = 'w', .ctrl = true }));
+    try std.testing.expectEqualStrings("hello brave ", s.input.text());
+    t.key(.enter);
+    t.typeText("  spaced  ");
+    t.key(.enter);
+    t.key(.enter);
+    // ^D on the empty input: cat's input ends, and so does cat.
+    try std.testing.expect(t.shortcut(.{ .key = 'd', .ctrl = true }));
+    try until(&f, struct {
+        fn ok(x: *session_mod.Session) bool {
+            return !x.shell.busy();
+        }
+    }.ok);
+    try std.testing.expect(!program.reading(s));
+    const b = s.timeline.items[s.timeline.items.len - 1].block;
+    try std.testing.expectEqual(@import("blocks.zig").State.done, b.state);
+    const out = try b.output.plainText(std.testing.allocator);
+    defer std.testing.allocator.free(out);
+    // What cat printed back: the line as killed, the spaces kept, the empty line.
+    try std.testing.expect(std.mem.indexOf(u8, out, "hello brave \nhello brave ") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "  spaced  \n  spaced  ") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "  spaced  \n  spaced  \n\n\n") != null or std.mem.endsWith(u8, out, "\n"));
 }

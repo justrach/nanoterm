@@ -228,9 +228,9 @@ pub const Session = struct {
     sticky: ?*blocks.Block = null,
     sticky_y: f32 = 0,
     /// How tall its input, floating over the timeline, was in the last frame;
-    /// and whether it was in Vim's normal mode.
+    /// and which of Vim's modes it was in.
     composer_h: f32 = 124,
-    vim_normal: bool = false,
+    vim: enum { insert, normal, visual } = .insert,
 
     /// A session whose shell starts in `cwd`.
     pub fn create(shared: *Shared, cwd_: []const u8) !*Session {
@@ -408,6 +408,7 @@ pub const Session = struct {
     /// Runs what was typed: a command, input for the command running, or a
     /// prompt for the agent.
     pub fn submit(a: *Session) void {
+        if (@import("session_program.zig").reading(a)) return @import("session_program.zig").line(a);
         const text = std.mem.trim(u8, a.input.text(), " \t");
         if (text.len == 0) return;
         const m = a.mode();
