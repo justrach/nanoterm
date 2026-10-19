@@ -1,7 +1,8 @@
 //! The video's frames, as one nanoui view: a title, nanoterm itself in a
 //! window (a test fails, the agent says why, Vim's keys go inside the
-//! output), the engine benchmark against Ghostty and Alacritty, what the
-//! benchmark found, and the end. Every picture in it is drawn by nanoui.
+//! output), any harness brought along, the engine benchmark against Ghostty
+//! and Alacritty, what the benchmark found, and the end. Every picture in it
+//! is drawn by nanoui.
 const std = @import("std");
 const nanoui = @import("nanoui");
 const ui = nanoui.ui;
@@ -22,12 +23,16 @@ pub const win = struct {
 
 /// When each scene starts, in seconds; the last ends the video.
 pub const at = struct {
-    pub const term = 3.0;
-    pub const bench = 16.0;
-    pub const fixes = 22.6;
-    pub const end = 26.6;
+    pub const term = 2.6;
+    pub const harness = 14.6;
+    pub const bench = 19.0;
+    pub const fixes = 24.2;
+    pub const end = 27.0;
     pub const done = 30.0;
 };
+
+/// What the Codegraff card offers, under "Or sign in with Codegraff".
+pub const codegraff_offer = "New Google sign-ups get $1 of free credit";
 
 /// Keys shown under the window as they are pressed: from, to, keys, what.
 pub const Caption = struct { f32, f32, []const u8, []const u8 };
@@ -46,8 +51,10 @@ pub const Director = struct {
         const t = d.now;
         if (t < at.term) {
             scene(c, t, 0, at.term, title, d);
+        } else if (t < at.harness) {
+            scene(c, t, at.term, at.harness, term, d);
         } else if (t < at.bench) {
-            scene(c, t, at.term, at.bench, term, d);
+            scene(c, t, at.harness, at.bench, harness, d);
         } else if (t < at.fixes) {
             scene(c, t, at.bench, at.fixes, bench, d);
         } else if (t < at.end) {
@@ -144,7 +151,7 @@ fn term(c: *ui.Context, d: *Director, t: f32) void {
         const lines = [_]struct { f32, []const u8 }{
             .{ 0, "Commands run as blocks you can fold, copy and rerun" },
             .{ 2.6, "Ask your agent, in the same input" },
-            .{ 6.9, "Vim keys, even inside a command's output" },
+            .{ 6.6, "Vim keys, even inside a command's output" },
         };
         var shown: usize = 0;
         for (lines, 0..) |l, i| if (t >= l[0]) {
@@ -187,6 +194,50 @@ fn caption(c: *ui.Context, d: *Director) void {
         }
         ui.text(c, cap[3], .{ .size = 15, .weight = .medium, .color = theme.background.alpha(0.85) });
     }
+}
+
+/// Every agent nanoterm runs, with its maker; graff is Codegraff's.
+fn harness(c: *ui.Context, _: *Director, t: f32) void {
+    const agents = @import("agents.zig");
+    const marks = @import("marks.zig");
+    const Which = @import("agent.zig").Which;
+    const col = ui.div(c).column().sizeFull().center().gap(26);
+    defer col.end();
+    {
+        const h = ui.div(c).column().itemsCenter().gap(8);
+        defer h.end();
+        ui.text(c, "Bring any harness", .{ .size = 40, .weight = .bold, .color = theme.text });
+        ui.text(c, "The coding agents you already use, with your own subscriptions and keys, in every tab.", .{ .size = 17, .color = theme.muted });
+    }
+    {
+        const r = ui.div(c).row().gap(12);
+        defer r.end();
+        for (agents.all, 0..) |info, i| {
+            if (info.which == .graff) continue;
+            const f: f32 = @floatFromInt(i);
+            const p = part(t, 0.25 + f * 0.09, 0.45);
+            const card = ui.div(c).column().w(146).itemsCenter().gap(10).px(10).py(18).rounded(14).bg(theme.background).border(theme.border).opacity(p).offset(0, (1 - p) * 12);
+            defer card.end();
+            _ = ui.image(c, .{ .key = c.print("video-mark-{s}", .{@tagName(info.which)}), .bytes = marks.agent(info.which), .max_width = 34, .max_height = 34, .radius = 0, .tint = theme.text });
+            ui.text(c, Which.label(info.which), .{ .size = 15, .weight = .semibold, .color = theme.text });
+            // The maker, from the blurb: "Anthropic's Claude Code, …" → Anthropic.
+            const maker = if (std.mem.indexOf(u8, info.blurb, "'s ")) |q| info.blurb[0..q] else info.blurb;
+            ui.text(c, maker, .{ .size = 12, .color = theme.muted });
+        }
+    }
+    const p = part(t, 1.2, 0.5);
+    const card = ui.div(c).row().gap(16).itemsCenter().px(22).py(16).rounded(16).bg(theme.background).border(theme.accent.alpha(0.6)).opacity(p);
+    defer card.end();
+    _ = ui.image(c, .{ .key = "video-mark-graff", .bytes = marks.agent(.graff), .max_width = 34, .max_height = 34, .radius = 0, .tint = theme.accent });
+    {
+        const words = ui.div(c).column().gap(3);
+        defer words.end();
+        ui.text(c, "Or sign in with Codegraff", .{ .size = 18, .weight = .semibold, .color = theme.text });
+        ui.text(c, codegraff_offer, .{ .size = 14, .color = theme.muted });
+    }
+    const badge = ui.div(c).px(14).py(7).roundedFull().bg(theme.accent).opacity(part(t, 1.6, 0.4));
+    defer badge.end();
+    ui.text(c, "$1 free", .{ .size = 16, .weight = .bold, .color = theme.on_accent });
 }
 
 /// MB/s, median of 7 (bench/results/2026-10-19): nanoterm, Ghostty 1.3.1,

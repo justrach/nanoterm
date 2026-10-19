@@ -70,7 +70,7 @@ fn start(c: *ui.Context, w: *Workspace) void {
     title(c, "Welcome to nanoterm", "Commands and questions in one input: it runs commands in blocks, and hands questions to a coding agent. How would you like to start?");
     const a = &w.shared.prefs.account;
     switch (a.state) {
-        .signed_out => if (choice(c, "ob-signin", "sparkles", "Sign in with Codegraff", "One sign-in for graff's models, Codegraff's credits, and Jev telling commands from questions.", true, false)) a.signIn(),
+        .signed_out => if (choice(c, "ob-signin", "sparkles", "Sign in with Codegraff", "New Google sign-ups get $1 of free credit. One sign-in for graff's models, Codegraff's credits, and Jev telling commands from questions.", true, false)) a.signIn(),
         .starting, .waiting => {
             const b = ui.div(c).column().wFull().gap(8).p(14).rounded(12).bg(theme.accent.alpha(0.08)).border(theme.accent);
             defer b.end();
