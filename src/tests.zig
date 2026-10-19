@@ -30,6 +30,8 @@ test {
     _ = @import("screen_mouse.zig");
     _ = @import("tests_mouse.zig");
     _ = @import("tests_inline.zig");
+    _ = @import("markdown_html.zig");
+    _ = @import("mermaid.zig");
     _ = @import("tests_screen.zig");
     _ = @import("split.zig");
     _ = @import("commands.zig");

@@ -2,7 +2,8 @@
 //! font with bold, italics, inline code and links in place; headings;
 //! lists with hanging markers and task boxes; quotes with a bar; tables
 //! in a grid; code in a panel with its language, syntax colors and a
-//! copy button.
+//! copy button; Mermaid diagrams drawn; and READMEs' HTML: centered
+//! blocks, pictures (beside the file shown) and badges.
 const std = @import("std");
 const nanoui = @import("nanoui");
 const ui = nanoui.ui;
@@ -14,11 +15,22 @@ const highlight = @import("highlight.zig");
 pub const body: ui.TextStyle = .{ .size = 14, .leading = 1.5, .wrap = true };
 
 fn palette() md.Palette {
-    return .{ .code = theme.code_inline, .code_bg = theme.code_inline_bg, .link = theme.accent };
+    return .{ .code = theme.code_inline, .code_bg = theme.code_inline_bg, .link = theme.accent, .muted = theme.muted };
 }
 
 /// Draws the Markdown `src`.
 pub fn markdown(c: *ui.Context, src: []const u8) void {
+    markdownIn(c, src, null);
+}
+
+/// Where relative pictures are, while a file's Markdown is drawn.
+var base: ?[]const u8 = null;
+
+/// Draws the Markdown `src` of a file in folder `dir` (its pictures are
+/// beside it).
+pub fn markdownIn(c: *ui.Context, src: []const u8, dir: ?[]const u8) void {
+    base = dir;
+    defer base = null;
     const blocks = md.parse(c.alloc(), src, palette());
     const col = ui.div(c).column().wFull();
     defer col.end();
@@ -37,40 +49,99 @@ pub fn markdown(c: *ui.Context, src: []const u8) void {
 /// that don't set it).
 pub var pictures: ?*@import("pictures.zig").Cache = null;
 
-fn rich(c: *ui.Context, in: md.Inline, style: ui.TextStyle) void {
-    if (in.images.len == 0) return ui.richText(c, in.text, in.spans, style);
-    // The text, unless it is only the pictures' alt text; then the pictures.
-    var shown: [8]?[]const u8 = @splat(null);
-    const n = @min(in.images.len, shown.len);
-    var only_alts = true;
-    var last: u32 = 0;
-    for (in.images[0..n], 0..) |im, i| {
-        if (pictures) |cache| shown[i] = cache.get(im.src);
-        if (std.mem.trim(u8, in.text[last..im.start], " \t").len > 0) only_alts = false;
-        if (shown[i] == null) only_alts = false;
-        last = im.end;
+/// The picture `src` names, read from disk: an absolute path, `~/…`, or
+/// beside the file shown; pictures on the web are not fetched.
+fn picture(c: *ui.Context, src: []const u8) ?[]const u8 {
+    const cache = pictures orelse return null;
+    if (std.mem.indexOf(u8, src, "://") == null and !std.fs.path.isAbsolute(src) and !std.mem.startsWith(u8, src, "~/")) {
+        const dir = base orelse return null;
+        return cache.get(std.fs.path.join(c.alloc(), &.{ dir, src }) catch return null);
     }
-    if (std.mem.trim(u8, in.text[last..], " \t").len > 0) only_alts = false;
+    return cache.get(src);
+}
+
+/// Text, centered when HTML asked: a line that fits is drawn unwrapped,
+/// as wide as it is, so it can be centered.
+fn text(c: *ui.Context, in: md.Inline, style: ui.TextStyle) void {
+    if (!in.center) return ui.richText(c, in.text, in.spans, style);
+    const box = ui.div(c).column().wFull().itemsCenter();
+    defer box.end();
+    var st = style;
+    const fits = std.mem.indexOfScalar(u8, in.text, '\n') == null and c.text.width(in.text, style) * 1.04 < c.size.w - 200;
+    if (fits) st.wrap = false;
+    ui.richText(c, in.text, in.spans, st);
+}
+
+fn rich(c: *ui.Context, in: md.Inline, style: ui.TextStyle) void {
+    if (in.images.len == 0) return text(c, in, style);
+    // Only pictures (a README's logo, a row of badges): a figure.
+    var last: u32 = 0;
+    var only = true;
+    for (in.images) |im| {
+        if (std.mem.trim(u8, in.text[last..@max(last, im.start)], " \t\n·|").len > 0) only = false;
+        last = @max(last, im.end);
+    }
+    if (std.mem.trim(u8, in.text[last..], " \t\n·|").len > 0) only = false;
+    if (only) return figures(c, in, style);
+    // Text with pictures: the text, then the pictures that can be shown.
     const col = ui.div(c).column().wFull().gap(10);
     defer col.end();
-    if (!only_alts) ui.richText(c, in.text, in.spans, style);
-    for (in.images[0..n], 0..) |im, i| {
-        const bytes = shown[i] orelse continue;
+    text(c, in, style);
+    for (in.images, 0..) |im, i| {
+        const bytes = picture(c, im.src) orelse continue;
         ui.key(c, c.print("pic-{d}", .{i}));
-        const fig = ui.div(c).column().gap(6);
-        defer fig.end();
-        {
-            const frame = ui.div(c).column().p(1).rounded(11).border(theme.border).bg(theme.panel);
-            defer frame.end();
-            if (frame.clicked()) {
-                var buf: [4096]u8 = undefined;
-                if (@import("pictures.zig").resolve(&buf, pictures.?.home, im.src)) |path| _ = nanoui.shell.openPath(path);
-            }
-            if (!ui.image(c, .{ .key = im.src, .bytes = bytes, .max_width = 560, .max_height = 420, .radius = 10 })) {
-                ui.text(c, in.text[im.start..im.end], style);
+        figure(c, im, bytes, in.text[im.start..im.end], style, im.width == null and !in.center);
+    }
+}
+
+/// A picture, framed (a click opens it), with its alt text as a caption
+/// when Markdown gave it (HTML's alt text describes, it isn't shown).
+fn figure(c: *ui.Context, im: md.Image, bytes: []const u8, alt: []const u8, style: ui.TextStyle, caption: bool) void {
+    const fig = ui.div(c).column().gap(6);
+    defer fig.end();
+    {
+        const frame = ui.div(c).column().p(1).rounded(11).border(theme.border).bg(theme.panel);
+        defer frame.end();
+        if (frame.clicked()) {
+            var buf: [4096]u8 = undefined;
+            if (@import("pictures.zig").resolve(&buf, pictures.?.home, im.src)) |path| _ = nanoui.shell.openPath(path);
+        }
+        if (!ui.image(c, .{ .key = im.src, .bytes = bytes, .max_width = im.width orelse 560, .max_height = 420, .radius = 10 })) ui.text(c, alt, style);
+    }
+    if (caption and alt.len > 0) ui.text(c, alt, .{ .size = 12, .color = theme.muted });
+}
+
+/// Pictures in rows (centered when asked): those that can be shown, and
+/// the rest (a badge on the web) as a chip with their alt text.
+fn figures(c: *ui.Context, in: md.Inline, style: ui.TextStyle) void {
+    const col = ui.div(c).column().wFull().gap(6);
+    const col2 = if (in.center) col.itemsCenter() else col;
+    defer col2.end();
+    const room = @max(200, c.size.w - 180);
+    var i: usize = 0;
+    while (i < in.images.len) {
+        ui.key(c, c.print("figs-{d}", .{i}));
+        const row = ui.div(c).row().gap(6).itemsCenter();
+        defer row.end();
+        var used: f32 = 0;
+        while (i < in.images.len) : (i += 1) {
+            const im = in.images[i];
+            const alt = in.text[im.start..im.end];
+            ui.key(c, c.print("fig-{d}", .{i}));
+            if (picture(c, im.src)) |bytes| {
+                const w = im.width orelse 560;
+                if (used > 0 and used + w > room) break;
+                figure(c, im, bytes, alt, style, im.width == null and !in.center);
+                used += w + 6;
+            } else {
+                const w = c.text.width(alt, .{ .size = 11.5 }) + 22;
+                if (used > 0 and used + w > room) break;
+                const chip = ui.div(c).row().px(9).py(3).rounded(6).bg(theme.code_inline_bg).border(theme.border);
+                defer chip.end();
+                ui.text(c, if (alt.len > 0) alt else std.fs.path.basename(im.src), .{ .size = 11.5, .color = theme.muted });
+                used += w + 6;
             }
         }
-        if (im.end > im.start) ui.text(c, in.text[im.start..im.end], .{ .size = 12, .color = theme.muted });
     }
 }
 
@@ -143,20 +214,28 @@ fn syntax() highlight.Palette {
     };
 }
 
-fn codeBlock(c: *ui.Context, lang: []const u8, text: []const u8) void {
+fn codeBlock(c: *ui.Context, lang: []const u8, src: []const u8) void {
     const box = ui.div(c).column().wFull().p(1).bg(theme.code_bg).rounded(10).border(theme.border).clip();
     defer box.end();
+    const mermaid = std.ascii.eqlIgnoreCase(lang, "mermaid");
     {
         const h = ui.div(c).row().wFull().px(12).py(6).gap(8).itemsCenter().bg(theme.code_header);
         defer h.end();
-        ui.text(c, if (lang.len > 0) lang else "code", .{ .size = 11.5, .weight = .medium, .color = theme.muted });
+        if (mermaid) ui.icon(c, "point.3.connected.trianglepath.dotted", .{ .size = 11, .color = theme.muted });
+        ui.text(c, if (mermaid) "mermaid diagram" else if (lang.len > 0) lang else "code", .{ .size = 11.5, .weight = .medium, .color = theme.muted });
         ui.spacer(c);
-        if (ui.button(c, "Copy", .{ .variant = .ghost, .size = 11.5, .icon = "doc.on.doc" }).clicked) c.clipboard.write(c.clipboard.ctx, text);
+        if (ui.button(c, "Copy", .{ .variant = .ghost, .size = 11.5, .icon = "doc.on.doc" }).clicked) c.clipboard.write(c.clipboard.ctx, src);
+    }
+    if (mermaid) {
+        const d = ui.div(c).column().wFull().p(14).bg(theme.background).clip();
+        defer d.end();
+        if (@import("view_mermaid.zig").diagram(c, src)) return;
+        ui.text(c, "This kind of diagram shows as its source.", .{ .size = 11.5, .color = theme.muted });
     }
     const lines = ui.div(c).column().wFull().px(14).py(10).gap(0);
     defer lines.end();
     var in_block = false;
-    var it = std.mem.splitScalar(u8, text, '\n');
+    var it = std.mem.splitScalar(u8, src, '\n');
     while (it.next()) |l| {
         const spans = highlight.line(c.alloc(), l, lang, syntax(), &in_block);
         ui.richText(c, if (l.len == 0) " " else l, spans, .{ .size = 12.5, .mono = true, .wrap = true, .leading = 1.35, .color = theme.text });

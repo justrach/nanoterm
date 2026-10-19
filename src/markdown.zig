@@ -1,9 +1,11 @@
 //! Markdown, as agents write it: headings, paragraphs, bullet, numbered
 //! and task lists, quotes, rules, fenced code, tables; and inline
-//! **bold**, *italics*, `code`, ~~struck~~ text and [links](…). Parsed
-//! into blocks whose text carries nanoui spans, in the frame's memory.
+//! **bold**, *italics*, `code`, ~~struck~~ text and [links](…); and the
+//! HTML READMEs mix in (`markdown_html.zig`). Parsed into blocks whose
+//! text carries nanoui spans, in the frame's memory.
 const std = @import("std");
 const nanoui = @import("nanoui");
+const html = @import("markdown_html.zig");
 const Span = nanoui.ui.Span;
 const Color = nanoui.ui.Color;
 
@@ -12,6 +14,8 @@ pub const Palette = struct {
     code: Color,
     code_bg: Color,
     link: Color,
+    /// HTML's small print (`<sub>`, `<small>`).
+    muted: ?Color = null,
 };
 
 /// Text with its spans: sorted, never overlapping.
@@ -21,9 +25,13 @@ pub const Inline = struct {
     /// Pictures (`![alt](src)`): their source, and where their alt text is
     /// in `text` (drawn as a link where the picture can't be shown).
     images: []const Image = &.{},
+    /// Centered, as HTML's `align="center"` asks.
+    center: bool = false,
 };
 
-pub const Image = struct { src: []const u8, start: u32, end: u32 };
+/// A picture: its source, where its alt text is in the text, and the
+/// width HTML gave it.
+pub const Image = struct { src: []const u8, start: u32, end: u32, width: ?f32 = null };
 
 pub const Block = union(enum) {
     paragraph: Inline,
@@ -41,7 +49,7 @@ pub fn parse(arena: std.mem.Allocator, src: []const u8, pal: Palette) []const Bl
     return p.blocks.items;
 }
 
-const Parser = struct {
+pub const Parser = struct {
     arena: std.mem.Allocator,
     pal: Palette,
     blocks: std.ArrayList(Block) = .empty,
@@ -104,6 +112,21 @@ const Parser = struct {
                 try p.blocks.append(p.arena, .{ .code = .{ .lang = lang, .text = std.mem.trimEnd(u8, body.items, "\n ") } });
                 continue;
             }
+            // HTML, to the blank line that ends it (a comment to its end).
+            if (html.starts(t)) {
+                try p.flush();
+                const comment = std.mem.startsWith(u8, t, "<!--");
+                var body: std.ArrayList(u8) = .empty;
+                while (i < lines.items.len) : (i += 1) {
+                    const l = lines.items[i];
+                    if (!comment and std.mem.trim(u8, l, " \t").len == 0) break;
+                    try body.appendSlice(p.arena, l);
+                    try body.append(p.arena, '\n');
+                    if (comment and std.mem.indexOf(u8, l, "-->") != null) break;
+                }
+                try html.convert(p.arena, p.pal, body.items, &p.blocks);
+                continue;
+            }
             if (heading(t)) |level| {
                 try p.flush();
                 try p.blocks.append(p.arena, .{ .heading = .{ .level = level, .text = try p.inlines(std.mem.trim(u8, t[level..], " #")) } });
@@ -160,7 +183,7 @@ const Parser = struct {
 
     // Inline marks.
 
-    const Flags = struct { bold: bool = false, italic: bool = false, code: bool = false, strike: bool = false, link: bool = false };
+    pub const Flags = struct { bold: bool = false, italic: bool = false, code: bool = false, strike: bool = false, link: bool = false, muted: bool = false };
 
     fn inlines(p: *Parser, src: []const u8) !Inline {
         var b: Builder = .{ .arena = p.arena, .pal = p.pal };
@@ -168,26 +191,26 @@ const Parser = struct {
         return .{ .text = b.text.items, .spans = b.spans.items, .images = b.images.items };
     }
 
-    const Builder = struct {
+    pub const Builder = struct {
         arena: std.mem.Allocator,
         pal: Palette,
         text: std.ArrayList(u8) = .empty,
         spans: std.ArrayList(Span) = .empty,
         images: std.ArrayList(Image) = .empty,
 
-        fn emit(b: *Builder, s: []const u8, f: Flags) !void {
+        pub fn emit(b: *Builder, s: []const u8, f: Flags) !void {
             if (s.len == 0) return;
             const start: u32 = @intCast(b.text.items.len);
             try b.text.appendSlice(b.arena, s);
             const end: u32 = @intCast(b.text.items.len);
-            if (!f.bold and !f.italic and !f.code and !f.strike and !f.link) return;
+            if (!f.bold and !f.italic and !f.code and !f.strike and !f.link and !f.muted) return;
             const span: Span = .{
                 .start = start,
                 .end = end,
                 .weight = if (f.bold) .semibold else null,
                 .italic = f.italic,
                 .mono = f.code,
-                .color = if (f.code) b.pal.code else if (f.link) b.pal.link else null,
+                .color = if (f.code) b.pal.code else if (f.link) b.pal.link else if (f.muted) b.pal.muted else null,
                 .background = if (f.code) b.pal.code_bg else null,
                 .underline = f.link,
                 .strike = f.strike,
@@ -266,6 +289,14 @@ const Parser = struct {
                         }
                     }
                 }
+                // An inline HTML tag: a line break, or a mark left out.
+                if (ch == '<') if (html.inlineTag(rest)) |tag| {
+                    try b.emit(src[plain..i], f);
+                    if (tag.br) try b.emit("\n", f);
+                    i += tag.len;
+                    plain = i;
+                    continue;
+                };
                 if (std.mem.startsWith(u8, rest, "https://") or std.mem.startsWith(u8, rest, "http://")) {
                     var end = i;
                     while (end < src.len and src[end] != ' ' and src[end] != ')' and src[end] != '>') end += 1;

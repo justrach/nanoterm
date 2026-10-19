@@ -150,7 +150,10 @@ fn output(c: *ui.Context, b: *blocks.Block, f: *const find.State) void {
         const text = b.output.plainText(c.alloc()) catch "";
         const box = ui.div(c).column().wFull().pt(4).pb(2);
         defer box.end();
-        view_markdown.markdown(c, text);
+        // Its pictures are beside the file.
+        const file = blocks.markdownFile(b.command) orelse "";
+        const path = std.fs.path.join(c.alloc(), &.{ b.cwd, file }) catch "";
+        view_markdown.markdownIn(c, text, std.fs.path.dirname(path));
         return;
     }
     // The current match in lines not shown: show them all.
