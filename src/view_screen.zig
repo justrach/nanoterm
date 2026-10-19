@@ -159,11 +159,19 @@ pub fn keys(c: *ui.Context, a: *Session, s: *Screen) void {
         s.copied = null;
     }
     // Pasted text, marked as pasted when the program asked (vim, zsh).
-    for (c.input.ops) |op| if (op == .insert) {
-        if (s.bracketed_paste) a.shell.input("\x1b[200~");
-        a.shell.input(op.insert);
-        if (s.bracketed_paste) a.shell.input("\x1b[201~");
-        c.changed = true;
+    for (c.input.ops) |op| switch (op) {
+        .insert => |text| {
+            if (s.bracketed_paste) a.shell.input("\x1b[200~");
+            a.shell.input(text);
+            if (s.bracketed_paste) a.shell.input("\x1b[201~");
+            c.changed = true;
+        },
+        // The system's editing keys, as a Mac terminal sends them.
+        .command => |cmd| if (editBytes(&buf, s, cmd)) |bytes| {
+            a.shell.input(bytes);
+            c.changed = true;
+        },
+        else => {},
     };
     if (c.input.shortcut) |k| if (!k.cmd) {
         c.shortcut_taken = true;
@@ -171,10 +179,10 @@ pub fn keys(c: *ui.Context, a: *Session, s: *Screen) void {
         c.changed = true;
         const S = ui.Shortcut;
         const bytes: []const u8 = switch (k.key) {
-            S.up => arrow(&buf, s, 'A'),
-            S.down => arrow(&buf, s, 'B'),
-            S.left => arrow(&buf, s, 'D'),
-            S.right => arrow(&buf, s, 'C'),
+            S.up => modArrow(&buf, s, 'A', k.shift, k.alt, k.ctrl),
+            S.down => modArrow(&buf, s, 'B', k.shift, k.alt, k.ctrl),
+            S.left => if (k.alt and !k.ctrl) "\x1bb" else modArrow(&buf, s, 'D', k.shift, k.alt, k.ctrl),
+            S.right => if (k.alt and !k.ctrl) "\x1bf" else modArrow(&buf, s, 'C', k.shift, k.alt, k.ctrl),
             S.escape => "\x1b",
             S.tab => if (k.shift) "\x1b[Z" else "\t",
             ' ', '@', '2' => if (k.ctrl) "\x00" else "",
@@ -197,18 +205,21 @@ pub fn keys(c: *ui.Context, a: *Session, s: *Screen) void {
     }
     const k = c.input.key orelse return;
     c.changed = true;
+    // With Option, Command, Shift or Control, as Mac terminals send them:
+    // Option deletes and moves by words, Command to the line's ends.
+    const in = c.input;
     a.shell.input(switch (k) {
-        .enter => "\r",
-        .backspace => "\x7f",
+        .enter => if (in.shift or in.alt) "\x1b\r" else "\r",
+        .backspace => if (in.cmd) "\x15" else if (in.alt) "\x1b\x7f" else if (in.ctrl) "\x17" else "\x7f",
         .tab => "\t",
         .escape => "\x1b",
-        .up => arrow(&buf, s, 'A'),
-        .down => arrow(&buf, s, 'B'),
-        .right => arrow(&buf, s, 'C'),
-        .left => arrow(&buf, s, 'D'),
+        .up => modArrow(&buf, s, 'A', in.shift, in.alt, in.ctrl),
+        .down => modArrow(&buf, s, 'B', in.shift, in.alt, in.ctrl),
+        .right => if (in.cmd) "\x05" else if (in.alt and !in.ctrl) "\x1bf" else modArrow(&buf, s, 'C', in.shift, in.alt, in.ctrl),
+        .left => if (in.cmd) "\x01" else if (in.alt and !in.ctrl) "\x1bb" else modArrow(&buf, s, 'D', in.shift, in.alt, in.ctrl),
         .home => if (s.app_cursor) "\x1bOH" else "\x1b[H",
         .end => if (s.app_cursor) "\x1bOF" else "\x1b[F",
-        .delete => "\x1b[3~",
+        .delete => if (in.alt) "\x1bd" else "\x1b[3~",
         .page_up => "\x1b[5~",
         .page_down => "\x1b[6~",
         .f1 => "\x1bOP",
@@ -240,6 +251,35 @@ fn wheel(c: *ui.Context, a: *Session, s: *Screen) void {
         if (mouse.tracking(c, s)) mouse.wheel(c, a, s, up) else a.shell.input(arrow(&buf, s, if (up) 'A' else 'B'));
         s.wheel -= if (up) m.h else -m.h;
     }
+}
+
+/// A cursor key held with Shift, Option or Control: xterm's
+/// `CSI 1 ; m X`, m one more than Shift 1 + Option 2 + Control 4.
+fn modArrow(buf: []u8, s: *const Screen, final: u8, shift: bool, alt: bool, ctrl: bool) []const u8 {
+    if (!shift and !alt and !ctrl) return arrow(buf, s, final);
+    const m: u8 = 1 + @as(u8, if (shift) 1 else 0) + @as(u8, if (alt) 2 else 0) + @as(u8, if (ctrl) 4 else 0);
+    return std.fmt.bufPrint(buf, "\x1b[1;{d}{c}", .{ m, final }) catch "";
+}
+
+/// The bytes of an editing command the system's key bindings made of a
+/// key (Option-Delete, Command-Left…), as Mac terminals send them.
+fn editBytes(buf: []u8, s: *const Screen, cmd: ui.Command) ?[]const u8 {
+    return switch (cmd) {
+        .delete_backward => "\x7f",
+        .delete_forward => "\x1b[3~",
+        .delete_word_backward => "\x1b\x7f",
+        .delete_to_line_start => "\x15",
+        .move_left => arrow(buf, s, 'D'),
+        .move_right => arrow(buf, s, 'C'),
+        .move_word_left => "\x1bb",
+        .move_word_right => "\x1bf",
+        .move_line_start => "\x01",
+        .move_line_end => "\x05",
+        .insert_newline => "\r",
+        .insert_tab => "\t",
+        .cancel => "\x1b",
+        else => null,
+    };
 }
 
 /// Cursor keys: SS3 in application mode (vim, less), CSI otherwise.
