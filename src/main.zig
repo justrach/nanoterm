@@ -17,6 +17,12 @@ fn forget(ctx: *anyopaque, _: *nanoui.Window) void {
     shared.window = null;
 }
 
+/// An update is ready: show it.
+fn updateReady(ctx: *anyopaque) void {
+    const shared: *session_mod.Shared = @ptrCast(@alignCast(ctx));
+    shared.redraw();
+}
+
 pub fn main(init: std.process.Init) !void {
     const args = try init.minimal.args.toSlice(init.arena.allocator());
     // Started by an agent as its MCP server: show_visual, then nothing else.
@@ -78,5 +84,12 @@ pub fn main(init: std.process.Init) !void {
     try first.queue.appendSlice(init.gpa, runs.items);
     first.queued_ask = ask;
     for (splits.items) |dir| w.splitFocused(if (std.mem.eql(u8, dir, "down")) .vertical else .horizontal);
+    w.updater = try nanoui.Updater.start(init, .{
+        .repo = "justrach/nanoterm",
+        .asset = "nanoterm-macos-arm64.zip",
+        .name = "nanoterm",
+        .changed = .{ .ctx = &shared, .func = updateReady },
+    });
+    defer w.updater.?.deinit();
     try app.run();
 }

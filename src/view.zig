@@ -219,6 +219,7 @@ fn titleBar(w: *Workspace, c: *ui.Context) void {
     }
     ui.spacer(c);
     if (s.agent) |ag| statusDot(c, ag.status);
+    if (w.updater) |u| if (u.ready()) |version| update(w, c, u, version);
     // The palette, for those who reach for the mouse.
     ui.key(c, "palette-button");
     const b = ui.div(c).row().gap(6).itemsCenter().px(10).py(4).rounded(7).border(theme.border).hover(theme.block_hover);
@@ -227,6 +228,17 @@ fn titleBar(w: *Workspace, c: *ui.Context) void {
     ui.icon(c, "magnifyingglass", .{ .size = 10, .color = theme.muted });
     ui.text(c, "Commands", .{ .size = 11.5, .color = theme.muted });
     ui.kbd(c, binds.label("Cmd+P"));
+}
+
+/// A newer nanoterm, downloaded and checked: restart into it.
+fn update(w: *Workspace, c: *ui.Context, u: *nanoui.Updater, version: []const u8) void {
+    const on = c.theme.accent_text;
+    ui.key(c, "update-button");
+    const b = ui.div(c).row().gap(6).itemsCenter().px(10).py(4).rounded(7).bg(theme.accent).hover(c.theme.accent_hover);
+    defer b.end();
+    if (b.clicked()) if (u.restart()) w.nanoapp.quit();
+    ui.icon(c, "arrow.down.circle.fill", .{ .size = 11, .color = on });
+    ui.text(c, c.print("Restart to update to {s}", .{version}), .{ .size = 11.5, .weight = .semibold, .color = on });
 }
 
 /// Ghostty's tab bar: a title per tab, its number for ⌘1…⌘9, a close

@@ -170,3 +170,40 @@ test "an agent's answer, in Markdown" {
     try tester.clickText("Copy");
     try std.testing.expect(std.mem.startsWith(u8, tester.clipboard.items, "// build.zig"));
 }
+
+test "a ready update shows in the title bar; one that can't install keeps nanoterm running" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+    var arena_state: std.heap.ArenaAllocator = .init(gpa);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const home = "/tmp/nanoterm-test-update";
+    std.Io.Dir.cwd().deleteTree(io, home) catch {};
+    try std.Io.Dir.cwd().createDirPath(io, home);
+    var env: std.process.Environ.Map = .init(arena);
+    try env.put("HOME", home);
+    try env.put("PATH", "/usr/bin:/bin");
+    var shared = try session_mod.Shared.init(gpa, io, arena, &env);
+    shared.wire();
+    defer shared.deinit();
+    var u: nanoui.Updater = .{ .gpa = gpa, .io = io, .options = .{ .repo = "justrach/nanoterm", .asset = "nanoterm-macos-arm64.zip", .name = "nanoterm" } };
+    var w: ws_mod.Workspace = .{ .shared = &shared, .nanoapp = undefined, .updater = &u };
+    defer w.deinit();
+    _ = try w.newTab(home);
+    var t: ui.Tester = undefined;
+    try t.init(gpa, .init(&w, view.view), .{ .width = 1000, .height = 640, .theme = theme.ui() });
+    defer t.deinit();
+    t.settle(1);
+    try std.testing.expect(!t.hasText("Restart to update"));
+    u.version_buf[0..5].* = "9.9.9".*;
+    u.version_len = 5;
+    u.phase.store(.ready, .release);
+    t.settle(1);
+    try std.testing.expect(t.hasText("Restart to update to 9.9.9"));
+    // Nothing is staged here, so it can't install, and nothing quits
+    // (quitting would reach the undefined app).
+    const r = t.findText("Restart to update to 9.9.9").?;
+    t.click(r.x + 4, r.y + r.h / 2);
+    t.settle(1);
+    try std.testing.expectEqual(nanoui.update.Phase.ready, u.phase.load(.acquire));
+}

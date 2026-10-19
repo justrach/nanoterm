@@ -33,6 +33,8 @@ const resize_step = 0.05;
 pub const Workspace = struct {
     shared: *Shared,
     nanoapp: *nanoui.App,
+    /// Updates from the releases (none in tests).
+    updater: ?*nanoui.Updater = null,
     tabs: std.ArrayList(*Tab) = .empty,
     active: usize = 0,
     /// Where the panes of the active tab were laid out in the last frame.
