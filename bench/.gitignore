@@ -1,0 +1,5 @@
+.cache/
+zig-out/
+.zig-cache/
+target/
+results/*/screen-*

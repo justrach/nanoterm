@@ -75,7 +75,15 @@ pub const Vt = struct {
                         0x1b => v.state = .esc,
                         0x00...0x1a, 0x1c...0x1f => v.control(b),
                         0x7f => {},
-                        0x20...0x7e => v.print(b),
+                        0x20...0x7e => {
+                            // A run of printable ASCII at once (most of what
+                            // programs print): no decoding, no width lookup.
+                            var end = i + 1;
+                            while (end < bytes.len and bytes[end] >= 0x20 and bytes[end] <= 0x7e) end += 1;
+                            v.last = bytes[end - 1];
+                            s.putAscii(bytes[i..end]);
+                            i = end - 1;
+                        },
                         else => {
                             const n = std.unicode.utf8ByteSequenceLength(b) catch {
                                 v.print(0xfffd);

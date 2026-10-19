@@ -50,6 +50,9 @@ const State = enum { ground, esc, csi, osc, osc_esc, charset };
 
 /// At most this many lines are kept; older ones go.
 pub const max_lines = 20_000;
+/// Past `max_lines`, this many of the oldest go at once: one move of the
+/// rest per batch, not one per line (which made long output quadratic).
+const drop_batch = max_lines / 8;
 
 pub const Output = struct {
     gpa: std.mem.Allocator,
@@ -146,11 +149,7 @@ pub const Output = struct {
     fn appendRow(o: *Output, row: []const screen.Cell) !void {
         var end = row.len;
         while (end > 0 and (row[end - 1].cp == ' ' or row[end - 1].cp == 0)) end -= 1;
-        if (o.lines.items.len >= max_lines) {
-            o.lines.items[0].deinit(o.gpa);
-            _ = o.lines.orderedRemove(0);
-            o.dropped += 1;
-        }
+        o.trim();
         var l: Line = .{};
         errdefer l.deinit(o.gpa);
         for (row[0..end]) |cell| {
@@ -191,17 +190,23 @@ pub const Output = struct {
         if (o.full) |f| f.screen.resize(cols, rows) catch {};
     }
 
+    /// Keeps at least `max_lines`, at most `max_lines + drop_batch`.
+    fn trim(o: *Output) void {
+        if (o.lines.items.len < max_lines + drop_batch) return;
+        for (o.lines.items[0..drop_batch]) |*l| l.deinit(o.gpa);
+        const rest = o.lines.items[drop_batch..];
+        std.mem.copyForwards(Line, o.lines.items[0..rest.len], rest);
+        o.lines.items.len = rest.len;
+        o.dropped += drop_batch;
+    }
+
     fn current(o: *Output) !*Line {
         if (o.lines.items.len == 0) try o.lines.append(o.gpa, .{});
         return &o.lines.items[o.lines.items.len - 1];
     }
 
     fn newline(o: *Output) !void {
-        if (o.lines.items.len >= max_lines) {
-            o.lines.items[0].deinit(o.gpa);
-            _ = o.lines.orderedRemove(0);
-            o.dropped += 1;
-        }
+        o.trim();
         try o.lines.append(o.gpa, .{});
         o.col = 0;
     }
@@ -566,3 +571,15 @@ test "a program drawing in place gets a screen, and its last screen stays" {
     try std.testing.expect(shell.full == null);
 }
 
+
+test "long output drops its oldest lines a batch at a time, keeping the newest" {
+    const gpa = std.testing.allocator;
+    var o: Output = .init(gpa);
+    defer o.deinit();
+    var buf: [32]u8 = undefined;
+    const n = max_lines + drop_batch + 10;
+    for (0..n) |i| try o.feed(try std.fmt.bufPrint(&buf, "line {d}\n", .{i}));
+    try std.testing.expect(o.lines.items.len >= max_lines and o.lines.items.len <= max_lines + drop_batch);
+    try std.testing.expectEqual(n + 1, o.lines.items.len + o.dropped);
+    try std.testing.expectEqualStrings(try std.fmt.bufPrint(&buf, "line {d}", .{n - 1}), o.lines.items[o.lines.items.len - 2].text.items);
+}

@@ -1,0 +1,14 @@
+# Alacritty's terminal engine (alacritty_terminal) as a benchmark runner.
+[package]
+name = "alacritty-bench"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+alacritty_terminal = "=0.26.0"
+libc = "0.2"
+
+[profile.release]
+lto = true
+codegen-units = 1

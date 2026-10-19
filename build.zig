@@ -25,4 +25,27 @@ pub fn build(b: *std.Build) void {
     b.step("test", "Run nanoterm's tests").dependOn(&b.addRunArtifact(tests).step);
     // The tests as a program, for another machine (Linux in a container).
     b.step("test-bin", "Install the tests as zig-out/bin/nanoterm-tests").dependOn(&b.addInstallArtifact(tests, .{ .dest_sub_path = "nanoterm-tests" }).step);
+
+    // The terminal benchmark (bench/README.md): its workloads and report, and
+    // nanoterm's engine as a runner. Build it with -Doptimize=ReleaseFast.
+    const vt_mod = b.createModule(.{
+        .root_source_file = b.path("src/vt.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "nanoui", .module = nanoui }},
+    });
+    const runner = b.addExecutable(.{ .name = "nanoterm-bench", .root_module = b.createModule(.{
+        .root_source_file = b.path("bench/nanoterm_bench.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "vt", .module = vt_mod }},
+    }) });
+    const termbench = b.addExecutable(.{ .name = "termbench", .root_module = b.createModule(.{
+        .root_source_file = b.path("bench/termbench.zig"),
+        .target = target,
+        .optimize = optimize,
+    }) });
+    const bench = b.step("bench", "Build the terminal benchmark (bench/README.md)");
+    bench.dependOn(&b.addInstallArtifact(runner, .{}).step);
+    bench.dependOn(&b.addInstallArtifact(termbench, .{}).step);
 }

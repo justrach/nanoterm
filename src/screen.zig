@@ -64,6 +64,10 @@ pub const Screen = struct {
     cols: u16,
     rows: u16,
     cells: []Cell,
+    /// Which row of `cells` each row on the screen is: scrolling turns
+    /// this (rows of indexes) rather than moving the cells, as Ghostty's
+    /// and Alacritty's grids do.
+    map: []u16,
     cur: Cursor = .{},
     saved: Cursor = .{},
     /// The last column was written: the next character wraps first.
@@ -108,14 +112,18 @@ pub const Screen = struct {
         errdefer gpa.destroy(s);
         const c = @max(cols, 1);
         const r = @max(rows, 1);
-        s.* = .{ .gpa = gpa, .cols = c, .rows = r, .cells = try gpa.alloc(Cell, @as(usize, c) * r), .bottom = r - 1 };
+        const cells = try gpa.alloc(Cell, @as(usize, c) * r);
+        errdefer gpa.free(cells);
+        s.* = .{ .gpa = gpa, .cols = c, .rows = r, .cells = cells, .map = try gpa.alloc(u16, r), .bottom = r - 1 };
         @memset(s.cells, .{});
+        for (s.map, 0..) |*m, i| m.* = @intCast(i);
         try s.resetTabs();
         return s;
     }
 
     pub fn destroy(s: *Screen) void {
         s.gpa.free(s.cells);
+        s.gpa.free(s.map);
         s.tabs.deinit(s.gpa);
         s.title.deinit(s.gpa);
         if (s.copied) |t| s.gpa.free(t);
@@ -131,7 +139,7 @@ pub const Screen = struct {
 
     pub fn row(s: *const Screen, y: usize) []Cell {
         const w: usize = s.cols;
-        return s.cells[y * w ..][0..w];
+        return s.cells[@as(usize, s.map[y]) * w ..][0..w];
     }
 
     /// A cell blanked with the pen's background, as erasing does.
@@ -145,6 +153,9 @@ pub const Screen = struct {
         const r = @max(rows, 1);
         if (c == s.cols and r == s.rows) return;
         const cells = try s.gpa.alloc(Cell, @as(usize, c) * r);
+        errdefer s.gpa.free(cells);
+        const map = try s.gpa.alloc(u16, r);
+        for (map, 0..) |*m, i| m.* = @intCast(i);
         @memset(cells, .{});
         // Rows that no longer fit go from the top, keeping the cursor's.
         const shift: usize = if (s.cur.y >= r) s.cur.y - r + 1 else 0;
@@ -154,7 +165,9 @@ pub const Screen = struct {
             @memcpy(cells[y * c ..][0..n], from[0..n]);
         }
         s.gpa.free(s.cells);
+        s.gpa.free(s.map);
         s.cells = cells;
+        s.map = map;
         s.cols = c;
         s.rows = r;
         s.top = 0;
@@ -205,6 +218,45 @@ pub const Screen = struct {
         } else s.cur.x += w;
     }
 
+    /// Printable ASCII, as `put` of each would write it, a row's worth at a
+    /// time; line drawing and insert mode go a character at a time.
+    pub fn putAscii(s: *Screen, text: []const u8) void {
+        if (s.insert or s.g0_lines or s.g1_lines) {
+            for (text) |ch| s.put(ch);
+            return;
+        }
+        var rest = text;
+        while (rest.len > 0) {
+            if (s.pending_wrap) {
+                if (!s.autowrap) {
+                    // Without wrapping each one lands on the last column.
+                    var cell = s.cur.pen;
+                    cell.cp = rest[rest.len - 1];
+                    cell.attrs.tail = false;
+                    s.row(s.cur.y)[s.cur.x] = cell;
+                    return;
+                }
+                s.pending_wrap = false;
+                s.cur.x = 0;
+                s.lineFeed();
+            }
+            const r = s.row(s.cur.y);
+            const x: usize = s.cur.x;
+            const n = @min(rest.len, r.len - x);
+            var cell = s.cur.pen;
+            cell.attrs.tail = false;
+            for (r[x..][0..n], rest[0..n]) |*dst, ch| {
+                cell.cp = ch;
+                dst.* = cell;
+            }
+            rest = rest[n..];
+            if (x + n >= s.cols) {
+                s.cur.x = s.cols - 1;
+                s.pending_wrap = true;
+            } else s.cur.x = @intCast(x + n);
+        }
+    }
+
     /// Down a line, scrolling the region at its bottom.
     pub fn lineFeed(s: *Screen) void {
         if (s.cur.y == s.bottom) {
@@ -233,16 +285,12 @@ pub const Screen = struct {
         if (from > s.bottom) return;
         const span: usize = s.bottom - from + 1;
         const n = @min(n_in, span);
-        const w: usize = s.cols;
-        const region = s.cells[from * w .. (@as(usize, s.bottom) + 1) * w];
-        if (up and from == 0) if (s.scrolled_off) |keep| for (0..n) |k| keep.func(keep.ctx, region[k * w ..][0..w]);
-        if (up) {
-            std.mem.copyForwards(Cell, region[0 .. (span - n) * w], region[n * w ..]);
-            @memset(region[(span - n) * w ..], s.blank());
-        } else {
-            std.mem.copyBackwards(Cell, region[n * w ..], region[0 .. (span - n) * w]);
-            @memset(region[0 .. n * w], s.blank());
-        }
+        if (up and from == 0) if (s.scrolled_off) |keep| for (0..n) |k| keep.func(keep.ctx, s.row(from + k));
+        // The rows turn; the ones that came round are blanked.
+        const rows = s.map[from .. @as(usize, s.bottom) + 1];
+        std.mem.rotate(u16, rows, if (up) n else span - n);
+        const fresh: usize = if (up) span - n else 0;
+        for (fresh..fresh + n) |k| @memset(s.row(from + k), s.blank());
     }
 
     /// IL and DL: lines inserted or deleted at the cursor, in the region.
@@ -296,10 +344,17 @@ pub const Screen = struct {
 
     /// ED: 0 to the end of the screen, 1 from its start, 2 and 3 all.
     pub fn eraseDisplay(s: *Screen, how: u32) void {
-        const at = @as(usize, s.cur.y) * s.cols + s.cur.x;
+        const y: usize = s.cur.y;
+        const x: usize = @min(s.cur.x, s.cols - 1);
         switch (how) {
-            0 => @memset(s.cells[at..], s.blank()),
-            1 => @memset(s.cells[0..@min(s.cells.len, at + 1)], s.blank()),
+            0 => {
+                @memset(s.row(y)[x..], s.blank());
+                for (y + 1..s.rows) |r| @memset(s.row(r), s.blank());
+            },
+            1 => {
+                for (0..y) |r| @memset(s.row(r), s.blank());
+                @memset(s.row(y)[0 .. x + 1], s.blank());
+            },
             else => @memset(s.cells, s.blank()),
         }
     }
@@ -413,4 +468,26 @@ test "writing, wrapping, scrolling a region, wide characters" {
     try s.resize(6, 2);
     try std.testing.expectEqual(@as(u16, 1), s.cur.y);
     try std.testing.expectEqual(@as(u21, 0x4e2d), s.row(1)[0].cp);
+}
+
+test "printable ASCII at once writes what a character at a time does" {
+    const gpa = std.testing.allocator;
+    // Wraps a 40-column screen several times.
+    const text = "the build passed in 42 seconds; the cache missed twice; tests ran on four cores; one was flaky, then green again; done in 3.2s, 127 files";
+    for ([_]bool{ true, false }) |autowrap| {
+        var a = try Screen.create(gpa, 40, 6);
+        defer a.destroy();
+        var b = try Screen.create(gpa, 40, 6);
+        defer b.destroy();
+        a.autowrap = autowrap;
+        b.autowrap = autowrap;
+        a.cur.x = 7;
+        b.cur.x = 7;
+        for (text) |ch| a.put(ch);
+        b.putAscii(text);
+        try std.testing.expectEqualSlices(u16, a.map, b.map);
+        for (0..6) |y| for (a.row(y), b.row(y)) |ca, cb| try std.testing.expectEqual(ca.cp, cb.cp);
+        try std.testing.expectEqual(a.cur, b.cur);
+        try std.testing.expectEqual(a.pending_wrap, b.pending_wrap);
+    }
 }

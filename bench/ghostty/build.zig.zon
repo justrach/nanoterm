@@ -1,0 +1,12 @@
+.{
+    // Ghostty's terminal engine (libghostty-vt) as a benchmark runner;
+    // run.sh clones Ghostty at the version measured into ../.cache/ghostty.
+    .name = .termbench_ghostty,
+    .version = "0.0.0",
+    .fingerprint = 0x7c0bcd1dc1e622ac,
+    .minimum_zig_version = "0.15.2",
+    .dependencies = .{
+        .ghostty = .{ .path = "../.cache/ghostty" },
+    },
+    .paths = .{ "build.zig", "build.zig.zon", "main.zig" },
+}
