@@ -1,6 +1,6 @@
 //! The first launch: three choices before anything else. How to start
-//! (sign in with Codegraff, where new accounts get $1 of credits; connect
-//! your own agents; or just the terminal), the input's keys (standard,
+//! (sign in with Codegraff; connect your own agents; or just the
+//! terminal), the input's keys (standard,
 //! Emacs, Vim), and whether to share anonymous usage analytics, under
 //! Standard Harness's privacy policy. Each can be changed in Settings.
 const std = @import("std");
@@ -70,7 +70,7 @@ fn start(c: *ui.Context, w: *Workspace) void {
     title(c, "Welcome to nanoterm", "Commands and questions in one input: it runs commands in blocks, and hands questions to a coding agent. How would you like to start?");
     const a = &w.shared.prefs.account;
     switch (a.state) {
-        .signed_out => if (choice(c, "ob-signin", "sparkles", "Sign in with Codegraff", "New accounts start with $1 in free credits. One sign-in for graff's models, Codegraff's credits, and Jev telling commands from questions.", true, false)) a.signIn(),
+        .signed_out => if (choice(c, "ob-signin", "sparkles", "Sign in with Codegraff", "One sign-in for graff's models, Codegraff's credits, and Jev telling commands from questions.", true, false)) a.signIn(),
         .starting, .waiting => {
             const b = ui.div(c).column().wFull().gap(8).p(14).rounded(12).bg(theme.accent.alpha(0.08)).border(theme.accent);
             defer b.end();
@@ -109,8 +109,8 @@ fn keysStep(c: *ui.Context, w: *Workspace) void {
     title(c, "Keys in the input", "For the input where you type commands and questions. Programs you run (vim, less) keep their own keys.");
     const p = &w.shared.prefs;
     if (choice(c, "ob-keys-std", "keyboard", "Standard", "The Mac's text editing: arrows, ⌥ for words, ⌘ for the line.", false, p.keys == .system)) p.setKeys(.system);
-    if (choice(c, "ob-keys-emacs", "command", "Emacs", "^A ^E to the ends, ^K ^U ^W kill and ^Y yanks back, ⌥B ⌥F by words, ^P ^N history.", false, p.keys == .emacs)) p.setKeys(.emacs);
-    if (choice(c, "ob-keys-vim", "character.cursor.ibeam", "Vim", "Esc for normal mode: h l w b 0 $, x, dw cw dd cc, p, i a A I; j k through history.", false, p.keys == .vim)) p.setKeys(.vim);
+    if (choice(c, "ob-keys-emacs", "command", "Emacs", "^A ^E ^K ^Y with a kill ring and M-y, ^T M-t, M-u M-l M-c, the mark, ^/ undo, ^P ^N history.", false, p.keys == .emacs)) p.setKeys(.emacs);
+    if (choice(c, "ob-keys-vim", "character.cursor.ibeam", "Vim", "Esc for normal mode: motions with counts, d c y with text objects (ciw, di\"), visual mode, u and ^R; j k through history.", false, p.keys == .vim)) p.setKeys(.vim);
     const f = footer(c);
     defer f.end();
     if (ui.button(c, "Back", .{ .variant = .ghost, .size = 13 }).clicked) w.onboarding = .start;
