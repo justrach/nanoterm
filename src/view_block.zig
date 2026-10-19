@@ -75,7 +75,7 @@ pub fn block(c: *ui.Context, app: *App, b: *blocks.Block, nested: bool) void {
     output(c, b, f);
     if (!nested) @import("view_remote.zig").bar(c, app, b);
     // A failed command: the agent can find out why, or fix it.
-    if (!nested and b.state == .done and b.failed() and b.source == .shell) {
+    if (!nested and app.shared.prefs.agents and b.state == .done and b.failed() and b.source == .shell) {
         const r = ui.div(c).row().gap(8).itemsCenter().pt(2);
         defer r.end();
         const fix = c.print("Fix with {s}", .{app.which.label()});
@@ -97,7 +97,7 @@ fn header(c: *ui.Context, app: *App, b: *blocks.Block, hovered: bool) void {
     if (hovered and b.state == .done and b.source == .shell) {
         // Warp's block actions: run again, ask the agent, copy.
         if (ui.button(c, "", .{ .variant = .ghost, .size = 11, .icon = "arrow.clockwise" }).clicked) app.run(b.command);
-        if (ui.button(c, "", .{ .variant = .ghost, .size = 11, .icon = "sparkles" }).clicked) {
+        if (app.shared.prefs.agents and ui.button(c, "", .{ .variant = .ghost, .size = 11, .icon = "sparkles" }).clicked) {
             app.selected = b.id;
             app.lock = .agent;
         }

@@ -91,9 +91,23 @@ pub fn agentList(c: *ui.Context, w: *Workspace) void {
     const b = box(c);
     defer b.end();
     const prefs = &w.shared.prefs;
+    {
+        // Off: a terminal and nothing else.
+        const r = ui.div(c).row().wFull().gap(10).itemsCenter();
+        defer r.end();
+        const t = ui.div(c).column().grow().gap(2);
+        {
+            defer t.end();
+            ui.text(c, "Coding agents", .{ .size = 13 });
+            ui.text(c, if (prefs.agents) "Questions go to your agent; commands run." else "Off: a terminal and nothing else. Everything typed runs; nothing is sent to an agent.", .{ .size = 11.5, .color = theme.muted, .wrap = true });
+        }
+        var on = prefs.agents;
+        if (ui.toggle(c, "", &on)) prefs.setAgents(on);
+    }
+    if (!prefs.agents) return;
     for (agents.all, 0..) |info, i| {
         ui.key(c, c.print("agent-{d}", .{i}));
-        if (i > 0) _ = c.leaf(.{ .width = .fill, .height = .{ .px = 1 }, .background = theme.border }, .none, null);
+        _ = c.leaf(.{ .width = .fill, .height = .{ .px = 1 }, .background = theme.border }, .none, null);
         const r = ui.div(c).row().wFull().gap(10).itemsCenter();
         defer r.end();
         const have = prefs.installed.get(info.which);

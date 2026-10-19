@@ -73,6 +73,8 @@ test "onboarding: how to start, the input's keys, analytics asked; the answers k
 
     try t.clickText("Just the terminal");
     t.settle(0.5);
+    // Just the terminal: agents off.
+    try std.testing.expect(!p.agents);
     try std.testing.expect(t.hasText("Keys in the input") and t.hasText("Emacs"));
     try t.clickText("Vim");
     t.settle(0.5);
@@ -191,4 +193,34 @@ test "inside cat: the keys edit the line, Return sends it as typed, ^D ends it" 
     try std.testing.expect(std.mem.indexOf(u8, out, "hello brave \nhello brave ") != null);
     try std.testing.expect(std.mem.indexOf(u8, out, "  spaced  \n  spaced  ") != null);
     try std.testing.expect(std.mem.indexOf(u8, out, "  spaced  \n  spaced  \n\n\n") != null or std.mem.endsWith(u8, out, "\n"));
+}
+
+test "agents off: a question runs in the shell, failures offer no agent, no model chip" {
+    var f: Fixture = undefined;
+    try f.init("/tmp/nanoterm-test-agents-off");
+    defer f.deinit();
+    const t = &f.t;
+    const s = f.w.focused();
+    try until(&f, struct {
+        fn ok(x: *session_mod.Session) bool {
+            return x.shell.cwd.items.len > 0 and !x.shell.busy();
+        }
+    }.ok);
+    f.shared.prefs.setAgents(false);
+    s.run("ls /nonexistent-folder");
+    try until(&f, struct {
+        fn ok(x: *session_mod.Session) bool {
+            return !x.shell.busy() and x.timeline.items.len > 0;
+        }
+    }.ok);
+    t.settle(0.3);
+    try std.testing.expect(!t.containsText("Fix with"));
+    try std.testing.expect(!t.containsText("default model"));
+    s.input.set("why did that fail?");
+    s.observe();
+    try std.testing.expectEqual(session_mod.Mode.terminal, s.mode());
+    try std.testing.expect(s.agent == null);
+    // On again: the same question is the agent's.
+    f.shared.prefs.setAgents(true);
+    try std.testing.expectEqual(session_mod.Mode.agent, s.mode());
 }

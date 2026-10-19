@@ -107,13 +107,13 @@ fn title(c: *ui.Context, _: *Director, t: f32) void {
         defer n.end();
         ui.text(c, "nanoterm", .{ .size = 124, .weight = .bold, .color = theme.text });
     }
-    typed(c, "A terminal for commands and coding agents.", t - 0.9, 38, .{ .size = 30, .color = theme.muted });
-    const chips = [_][]const u8{ "One input for both", "Vim & Emacs keys", "A 2 MB app", "MIT" };
+    typed(c, "Rethinking the terminal.", t - 0.9, 30, .{ .size = 30, .color = theme.muted });
+    const chips = [_][]const u8{ "Commands and agents in one input", "Agents optional", "Vim & Emacs keys", "A 2 MB app" };
     const r = ui.div(c).row().gap(10).pt(16);
     defer r.end();
     for (chips, 0..) |s, i| {
         const f: f32 = @floatFromInt(i);
-        const chip = ui.div(c).px(16).py(8).roundedFull().border(theme.border).bg(theme.background).opacity(part(t, 1.7 + f * 0.15, 0.4));
+        const chip = ui.div(c).px(16).py(8).roundedFull().border(theme.border).bg(theme.background).opacity(part(t, 1.25 + f * 0.12, 0.35));
         defer chip.end();
         ui.text(c, s, .{ .size = 15, .weight = .medium, .color = theme.text });
     }
@@ -226,8 +226,28 @@ fn harness(c: *ui.Context, _: *Director, t: f32) void {
         }
     }
     const p = part(t, 1.2, 0.5);
-    const card = ui.div(c).row().gap(16).itemsCenter().px(22).py(16).rounded(16).bg(theme.background).border(theme.accent.alpha(0.6)).opacity(p);
-    defer card.end();
+    const rest = ui.div(c).column().itemsCenter().gap(18);
+    defer rest.end();
+    {
+        const card = ui.div(c).row().gap(16).itemsCenter().px(22).py(16).rounded(16).bg(theme.background).border(theme.accent.alpha(0.6)).opacity(p);
+        defer card.end();
+        codegraffCard(c, t);
+    }
+    // Agents off: a terminal and nothing else.
+    const off = ui.div(c).row().gap(12).itemsCenter().opacity(part(t, 2.2, 0.5));
+    defer off.end();
+    {
+        const track = ui.div(c).row().w(38).h(22).p(3).rounded(11).bg(theme.faint.alpha(0.45));
+        defer track.end();
+        const knob = ui.div(c).w(16).h(16).rounded(8).bg(theme.background).shadow(.{ .color = .{ .a = 0.25 }, .blur = 3, .y = 1 });
+        knob.end();
+    }
+    ui.text(c, "Or turn agents off: just a fast terminal, nothing sent anywhere.", .{ .size = 16, .color = theme.muted });
+}
+
+/// Codegraff's card: its mark, the sign-in, the welcome credit.
+fn codegraffCard(c: *ui.Context, t: f32) void {
+    const marks = @import("marks.zig");
     _ = ui.image(c, .{ .key = "video-mark-graff", .bytes = marks.agent(.graff), .max_width = 34, .max_height = 34, .radius = 0, .tint = theme.accent });
     {
         const words = ui.div(c).column().gap(3);
@@ -343,7 +363,7 @@ fn end(c: *ui.Context, _: *Director, t: f32) void {
     {
         const s = ui.div(c).opacity(part(t, 0.3, 0.5));
         defer s.end();
-        ui.text(c, "Commands and coding agents, in one terminal.", .{ .size = 24, .color = theme.muted });
+        ui.text(c, "Rethinking the terminal.", .{ .size = 26, .color = theme.muted });
     }
     {
         const link = ui.div(c).row().gap(10).itemsCenter().px(22).py(12).roundedFull().bg(theme.accent).opacity(part(t, 0.7, 0.5));
@@ -353,7 +373,7 @@ fn end(c: *ui.Context, _: *Director, t: f32) void {
     {
         const s = ui.div(c).column().itemsCenter().gap(6).pt(26).opacity(part(t, 1.2, 0.5));
         defer s.end();
-        ui.text(c, "Built on nanoui. The benchmark is in bench/. MIT licensed.", .{ .size = 16, .color = theme.muted });
+        ui.text(c, "Commands and coding agents in one input, or just a terminal. Built on nanoui, MIT licensed.", .{ .size = 16, .color = theme.muted });
         ui.text(c, "Every frame of this video was drawn by nanoui.", .{ .size = 14, .color = theme.faint });
     }
 }

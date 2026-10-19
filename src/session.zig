@@ -362,6 +362,7 @@ pub const Session = struct {
     /// Where what is typed goes: the program running, else the mode chosen,
     /// else what the classifier (or Jev) made of it.
     pub fn mode(a: *const Session) Mode {
+        if (!a.shared.prefs.agents) return .terminal;
         // On an SSH host, commands unless clearly a request (its programs
         // are not on this machine's PATH for the classifier to know).
         if (a.shell.remoteReady()) {
@@ -400,7 +401,7 @@ pub const Session = struct {
         a.guessed = h;
         a.guess = classify.guess(text, &a.shared.commands, a.followUp());
         if (a.lock != null or a.shell.busy()) return;
-        if (!a.guess.sure and std.mem.indexOfScalar(u8, std.mem.trim(u8, text, " "), ' ') != null) a.shared.jev.ask(text);
+        if (a.shared.prefs.agents and !a.guess.sure and std.mem.indexOfScalar(u8, std.mem.trim(u8, text, " "), ' ') != null) a.shared.jev.ask(text);
         // Ready before Return is pressed.
         if (a.mode() == .agent and a.guess.sure and a.agent == null) _ = a.ensureAgent();
     }

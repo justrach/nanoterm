@@ -103,7 +103,7 @@ fn actions(c: *ui.Context, w: *Workspace, s: *Session) void {
         if (ui.button(c, "", .{ .variant = .ghost, .size = 8.5, .icon = "xmark" }).clicked) s.selected = null;
     };
     ui.spacer(c);
-    modelChip(c, w, s);
+    if (w.shared.prefs.agents) modelChip(c, w, s);
     // Send, or stop what runs.
     // An SSH session open is not something running: its commands are.
     const remote_idle = s.shell.remoteReady();

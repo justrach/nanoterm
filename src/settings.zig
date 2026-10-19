@@ -1,5 +1,6 @@
 //! What Settings (⌘,) keeps: the agent new tabs start with, the text
-//! size, the input's editing keys, whether onboarding was done, and the
+//! size, the input's editing keys, whether coding agents are on at all,
+//! whether onboarding was done, and the
 //! analytics choice (with the install's random id, sent only with it), in
 //! `~/Library/Application Support/nanoterm/settings.json`; the
 //! Codegraff account (graff's own credential file); and which agents are
@@ -20,6 +21,9 @@ pub const Prefs = struct {
     agent: Which = .graff,
     zoom: f32 = 1,
     keys: @import("nanoui").ui.Keymap = .system,
+    /// Coding agents at all: off, nanoterm is a terminal and nothing else
+    /// (everything typed runs; nothing is classified or sent).
+    agents: bool = true,
     onboarded: bool = false,
     analytics: Analytics = .unset,
     install_id: [32]u8 = @splat('0'),
@@ -33,13 +37,14 @@ pub const Prefs = struct {
         p.path = std.fs.path.join(arena, &.{ home, "Library", "Application Support", "nanoterm", "settings.json" }) catch "";
         const data = std.Io.Dir.cwd().readFileAlloc(io, p.path, gpa, .limited(64 * 1024)) catch return p;
         defer gpa.free(data);
-        const S = struct { agent: []const u8 = "graff", zoom: f32 = 1, keys: []const u8 = "system", onboarded: bool = false, analytics: []const u8 = "unset", install_id: []const u8 = "" };
+        const S = struct { agent: []const u8 = "graff", zoom: f32 = 1, keys: []const u8 = "system", agents: bool = true, onboarded: bool = false, analytics: []const u8 = "unset", install_id: []const u8 = "" };
         const parsed = std.json.parseFromSlice(S, gpa, data, .{ .ignore_unknown_fields = true }) catch return p;
         defer parsed.deinit();
         const v = parsed.value;
         p.agent = std.meta.stringToEnum(Which, v.agent) orelse .graff;
         p.zoom = std.math.clamp(v.zoom, 0.6, 2.4);
         p.keys = std.meta.stringToEnum(@TypeOf(p.keys), v.keys) orelse .system;
+        p.agents = v.agents;
         p.onboarded = v.onboarded;
         p.analytics = std.meta.stringToEnum(Analytics, v.analytics) orelse .unset;
         if (v.install_id.len == p.install_id.len) @memcpy(&p.install_id, v.install_id);
@@ -60,7 +65,7 @@ pub const Prefs = struct {
         if (p.path.len == 0) return;
         if (std.fs.path.dirname(p.path)) |dir| std.Io.Dir.cwd().createDirPath(p.io, dir) catch {};
         var buf: [512]u8 = undefined;
-        const json = std.fmt.bufPrint(&buf, "{{\n  \"agent\": \"{s}\",\n  \"zoom\": {d:.2},\n  \"keys\": \"{s}\",\n  \"onboarded\": {},\n  \"analytics\": \"{s}\",\n  \"install_id\": \"{s}\"\n}}\n", .{ @tagName(p.agent), p.zoom, @tagName(p.keys), p.onboarded, @tagName(p.analytics), &p.install_id }) catch return;
+        const json = std.fmt.bufPrint(&buf, "{{\n  \"agent\": \"{s}\",\n  \"zoom\": {d:.2},\n  \"keys\": \"{s}\",\n  \"agents\": {},\n  \"onboarded\": {},\n  \"analytics\": \"{s}\",\n  \"install_id\": \"{s}\"\n}}\n", .{ @tagName(p.agent), p.zoom, @tagName(p.keys), p.agents, p.onboarded, @tagName(p.analytics), &p.install_id }) catch return;
         std.Io.Dir.cwd().writeFile(p.io, .{ .sub_path = p.path, .data = json }) catch {};
     }
 
@@ -74,6 +79,12 @@ pub const Prefs = struct {
     pub fn setKeys(p: *Prefs, k: @TypeOf(@as(Prefs, undefined).keys)) void {
         if (p.keys == k) return;
         p.keys = k;
+        p.save();
+    }
+
+    pub fn setAgents(p: *Prefs, on: bool) void {
+        if (p.agents == on) return;
+        p.agents = on;
         p.save();
     }
 
@@ -124,6 +135,7 @@ test "settings are kept across launches" {
         p.setAgent(.codex);
         p.setZoom(1.2);
         p.setKeys(.vim);
+        p.setAgents(false);
         p.setAnalytics(.on, io);
         p.finishOnboarding();
     }
@@ -132,6 +144,7 @@ test "settings are kept across launches" {
     try std.testing.expectEqual(Which.codex, p.agent);
     try std.testing.expectApproxEqAbs(@as(f32, 1.2), p.zoom, 0.001);
     try std.testing.expectEqual(@import("nanoui").ui.Keymap.vim, p.keys);
+    try std.testing.expect(!p.agents);
     try std.testing.expect(p.onboarded);
     try std.testing.expectEqual(Analytics.on, p.analytics);
     try std.testing.expect(!std.mem.allEqual(u8, &p.install_id, '0'));

@@ -86,9 +86,13 @@ fn start(c: *ui.Context, w: *Workspace) void {
     if (a.failure) |why| ui.text(c, why, .{ .size = 12, .color = theme.failure, .wrap = true });
     if (choice(c, "ob-agents", "cpu", "Connect your own agents", "Claude Code, Codex, opencode, Grok and others, with your own subscriptions.", false, false)) {
         w.shared.prefs.refresh(w.shared.env);
+        w.shared.prefs.setAgents(true);
         w.onboarding = .agents;
     }
-    if (choice(c, "ob-plain", "terminal", "Just the terminal", "Use nanoterm without an agent. Set one up any time in Settings (⌘,).", false, false)) w.onboarding = .keys;
+    if (choice(c, "ob-plain", "terminal", "Just the terminal", "Agents off: everything typed runs, nothing is sent anywhere. Turn them on any time in Settings (⌘,).", false, false)) {
+        w.shared.prefs.setAgents(false);
+        w.onboarding = .keys;
+    }
     if (a.state == .signed_in) {
         const f = footer(c);
         defer f.end();
