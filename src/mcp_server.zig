@@ -55,11 +55,11 @@ pub fn handle(gpa: std.mem.Allocator, line: []const u8, send: anytype) ?[]u8 {
         const version = if (asked) |v| (if (v == .string) v.string else "2025-06-18") else "2025-06-18";
         return reply(gpa, id, .{
             .protocolVersion = version,
-            .capabilities = .{ .tools = .{} },
+            .capabilities = .{ .tools = Empty{} },
             .serverInfo = .{ .name = "nanoterm", .version = "0.1.0" },
         });
     }
-    if (std.mem.eql(u8, method, "ping")) return reply(gpa, id, .{});
+    if (std.mem.eql(u8, method, "ping")) return reply(gpa, id, Empty{});
     if (std.mem.eql(u8, method, "tools/list")) {
         const Prop = struct { type: []const u8 = "string", minLength: u32 = 1, maxLength: u32, description: ?[]const u8 = null };
         return reply(gpa, id, .{ .tools = .{.{
@@ -79,6 +79,10 @@ pub fn handle(gpa: std.mem.Allocator, line: []const u8, send: anytype) ?[]u8 {
     }
     return std.json.Stringify.valueAlloc(gpa, .{ .jsonrpc = "2.0", .id = id, .@"error" = .{ .code = -32601, .message = "method not found" } }, .{}) catch null;
 }
+
+/// `{}` in JSON: an empty `.{}` is a tuple, which is written as `[]`, and
+/// MCP clients that check types (Kiro's) refuse it.
+const Empty = struct {};
 
 fn reply(gpa: std.mem.Allocator, id: std.json.Value, result: anytype) ?[]u8 {
     return std.json.Stringify.valueAlloc(gpa, .{ .jsonrpc = "2.0", .id = id, .result = result }, .{ .emit_null_optional_fields = false }) catch null;
