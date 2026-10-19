@@ -34,6 +34,12 @@ pub const Reply = struct {
     func: *const fn (ctx: *anyopaque, bytes: []const u8) void,
 };
 
+/// Where rows scrolled off the screen's top go (a terminal's scrollback).
+pub const ScrolledOff = struct {
+    ctx: *anyopaque,
+    func: *const fn (ctx: *anyopaque, row: []const Cell) void,
+};
+
 /// Columns a character takes: two for East Asian wide characters and
 /// emoji, none for combining marks, one otherwise.
 pub fn width(cp: u21) u2 {
@@ -93,6 +99,9 @@ pub const Screen = struct {
     origin: ?[2]f32 = null,
     /// Text the program put on the clipboard (OSC 52), for the app to copy.
     copied: ?[]u8 = null,
+    /// A program drawing in place of the lines (not on the alternate
+    /// screen): rows leaving the top are kept here.
+    scrolled_off: ?ScrolledOff = null,
 
     pub fn create(gpa: std.mem.Allocator, cols: u16, rows: u16) !*Screen {
         const s = try gpa.create(Screen);
@@ -226,6 +235,7 @@ pub const Screen = struct {
         const n = @min(n_in, span);
         const w: usize = s.cols;
         const region = s.cells[from * w .. (@as(usize, s.bottom) + 1) * w];
+        if (up and from == 0) if (s.scrolled_off) |keep| for (0..n) |k| keep.func(keep.ctx, region[k * w ..][0..w]);
         if (up) {
             std.mem.copyForwards(Cell, region[0 .. (span - n) * w], region[n * w ..]);
             @memset(region[(span - n) * w ..], s.blank());

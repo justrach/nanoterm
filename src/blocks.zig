@@ -42,7 +42,7 @@ pub const Block = struct {
             .command = try gpa.dupe(u8, command),
             .cwd = try gpa.dupe(u8, cwd),
             .git_branch = try gpa.dupe(u8, branch),
-            .output = .init(gpa),
+            .output = .{ .gpa = gpa, .inline_ok = true },
             .started = now(),
         };
         return b;

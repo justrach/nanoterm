@@ -29,6 +29,7 @@ test {
     _ = @import("screen_vt.zig");
     _ = @import("screen_mouse.zig");
     _ = @import("tests_mouse.zig");
+    _ = @import("tests_inline.zig");
     _ = @import("tests_screen.zig");
     _ = @import("split.zig");
     _ = @import("commands.zig");

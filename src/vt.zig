@@ -4,7 +4,11 @@
 //! colors in 16, 256 and 24-bit) and hands OSC sequences (the shell's block
 //! marks, the working directory) to a callback. A full-screen program's
 //! bytes, from the alternate screen on, drive a screen of cells instead
-//! (`screen.zig`), until it leaves it.
+//! (`screen.zig`), until it leaves it. So does a program that draws in
+//! place without it (Claude Code's prompts, Ink's apps, REPLs): one that
+//! asks for the terminal's input (bracketed paste, focus, the mouse, the
+//! kitty keyboard) gets a screen in the lines' place; the rows it scrolls
+//! off stay lines, and what it showed last becomes lines when it ends.
 const std = @import("std");
 const nanoui = @import("nanoui");
 const Color = nanoui.ui.Color;
@@ -69,25 +73,108 @@ pub const Output = struct {
     reply: ?screen.Reply = null,
     /// Lines dropped from the top for `max_lines`.
     dropped: usize = 0,
+    /// A command's output (not the shell's between commands): a program
+    /// drawing in place may take a screen.
+    inline_ok: bool = false,
+    /// The screen is such a program's, not the alternate screen.
+    inline_screen: bool = false,
 
     pub fn init(gpa: std.mem.Allocator) Output {
         return .{ .gpa = gpa };
     }
 
     pub fn deinit(o: *Output) void {
+        // Its screen goes first, kept nowhere.
+        o.inline_screen = false;
+        o.leaveScreen();
         for (o.lines.items) |*l| l.deinit(o.gpa);
         o.lines.deinit(o.gpa);
         o.params.deinit(o.gpa);
         o.osc.deinit(o.gpa);
-        o.leaveScreen();
     }
 
     /// The full-screen program's screen goes, as a terminal's alternate
     /// screen does when the program leaves it (or ends).
     pub fn leaveScreen(o: *Output) void {
-        if (o.full) |f| f.destroy();
+        if (o.full) |f| {
+            // What the alternate screen showed goes with it, as it does.
+            if (o.inline_screen and !f.screen.done) o.keepScreen(f.screen);
+            f.destroy();
+        }
         o.full = null;
         o.alternate_screen = false;
+        o.inline_screen = false;
+    }
+
+    /// A program drawing in place wants the terminal's input: its lines go
+    /// onto a screen (the last screenful, cursor where it was), and it
+    /// draws there, `trigger` (what asked) first.
+    fn enterInline(o: *Output, trigger: []const u8) !void {
+        if (!o.inline_ok or o.full != null) return;
+        const v = try screen_vt.Vt.create(o.gpa, o.cols, o.rows);
+        v.screen.reply = o.reply;
+        v.screen.scrolled_off = .{ .ctx = o, .func = scrolledOff };
+        o.full = v;
+        o.inline_screen = true;
+        const keep = @min(o.lines.items.len, @as(usize, o.rows) - 1);
+        const first = o.lines.items.len - keep;
+        var moved: std.ArrayList(Line) = .empty;
+        defer {
+            for (moved.items) |*l| l.deinit(o.gpa);
+            moved.deinit(o.gpa);
+        }
+        try moved.appendSlice(o.gpa, o.lines.items[first..]);
+        o.lines.shrinkRetainingCapacity(first);
+        for (moved.items, 0..) |l, k| {
+            _ = v.feed(l.text.items);
+            if (k + 1 < moved.items.len) _ = v.feed("\r\n");
+        }
+        if (moved.items.len > 0 and o.col < moved.items[moved.items.len - 1].text.items.len) {
+            var buf: [16]u8 = undefined;
+            _ = v.feed("\r");
+            if (o.col > 0) _ = v.feed(std.fmt.bufPrint(&buf, "\x1b[{d}C", .{o.col}) catch "");
+        }
+        _ = v.feed(trigger);
+    }
+
+    fn scrolledOff(ctx: *anyopaque, row: []const screen.Cell) void {
+        const o: *Output = @ptrCast(@alignCast(ctx));
+        o.appendRow(row) catch {};
+    }
+
+    /// A screen row as a line of the output: its text, colored by runs.
+    fn appendRow(o: *Output, row: []const screen.Cell) !void {
+        var end = row.len;
+        while (end > 0 and (row[end - 1].cp == ' ' or row[end - 1].cp == 0)) end -= 1;
+        if (o.lines.items.len >= max_lines) {
+            o.lines.items[0].deinit(o.gpa);
+            _ = o.lines.orderedRemove(0);
+            o.dropped += 1;
+        }
+        var l: Line = .{};
+        errdefer l.deinit(o.gpa);
+        for (row[0..end]) |cell| {
+            if (cell.attrs.tail) continue;
+            const start: u32 = @intCast(l.text.items.len);
+            var buf: [4]u8 = undefined;
+            const n = std.unicode.utf8Encode(if (cell.cp < 0x20) ' ' else cell.cp, &buf) catch 1;
+            try l.text.appendSlice(o.gpa, buf[0..n]);
+            if (cell.fg) |c| try addSpan(o.gpa, &l, .{ .start = start, .end = @intCast(l.text.items.len), .color = c });
+        }
+        try o.lines.append(o.gpa, l);
+    }
+
+    /// What the screen shows, down to its last row with text or the
+    /// cursor, becomes lines; the next output starts a line of its own.
+    fn keepScreen(o: *Output, s: *const screen.Screen) void {
+        var last: usize = s.cur.y;
+        for (0..s.rows) |y| for (s.row(y)) |cell| if (cell.cp != ' ' and cell.cp != 0) {
+            last = @max(last, y);
+            break;
+        };
+        for (0..last + 1) |y| o.appendRow(s.row(y)) catch {};
+        o.lines.append(o.gpa, .{}) catch {};
+        o.col = 0;
     }
 
     fn enterScreen(o: *Output) void {
@@ -293,6 +380,11 @@ pub const Output = struct {
 
     fn csi(o: *Output, final: u8) !void {
         const p = o.params.items;
+        if (asksForInput(p, final)) {
+            var buf: [64]u8 = undefined;
+            const seq = std.fmt.bufPrint(&buf, "\x1b[{s}{c}", .{ p, final }) catch return;
+            return o.enterInline(seq);
+        }
         if (p.len > 0 and p[0] == '?') {
             // Private modes: the alternate screen marks a full-screen program.
             if (std.mem.eql(u8, p, "?1049") or std.mem.eql(u8, p, "?47") or std.mem.eql(u8, p, "?1047")) {
@@ -315,6 +407,18 @@ pub const Output = struct {
             'J' => if (param(p, 0, 0) >= 2) o.clear(),
             else => {},
         }
+    }
+
+    /// What a program that reads the terminal itself turns on: bracketed
+    /// paste, focus reports, mouse tracking, the kitty keyboard.
+    fn asksForInput(p: []const u8, final: u8) bool {
+        if (final == 'u' and p.len > 0 and p[0] == '>') return true;
+        if (final != 'h' or p.len == 0 or p[0] != '?') return false;
+        var it = std.mem.splitScalar(u8, p[1..], ';');
+        while (it.next()) |m| for ([_][]const u8{ "2004", "1004", "1000", "1002", "1003" }) |want| {
+            if (std.mem.eql(u8, m, want)) return true;
+        };
+        return false;
     }
 
     pub fn clear(o: *Output) void {
@@ -434,3 +538,31 @@ test "lines, colors, carriage returns, OSC" {
     try std.testing.expect(o.full == null);
     try std.testing.expectEqualStrings("back", o.lines.items[4].text.items);
 }
+
+test "a program drawing in place gets a screen, and its last screen stays" {
+    const gpa = std.testing.allocator;
+    var o: Output = .{ .gpa = gpa, .inline_ok = true, .cols = 40, .rows = 6 };
+    defer o.deinit();
+    try o.feed("one\ntwo\n");
+    // Bracketed paste on: Claude Code's prompt, redrawn in place.
+    try o.feed("\x1b[?2004h\x1b[?25l> 1. Yes\r\n  2. No\r\n");
+    try std.testing.expect(o.full != null and !o.alternate_screen);
+    try o.feed("\x1b[2A\x1b[2K> 1. Yes, I trust this folder\r\n\r\n");
+    const s = o.full.?.screen;
+    try std.testing.expectEqual(@as(u21, 'o'), s.row(0)[0].cp);
+    try std.testing.expectEqual(@as(u21, 'Y'), s.row(2)[5].cp);
+    try std.testing.expectEqual(@as(u21, 'f'), s.row(2)[23].cp);
+    // Rows scrolled off its top stay lines.
+    try o.feed("a\r\nb\r\nc\r\nd\r\n");
+    try std.testing.expectEqualStrings("one", o.lines.items[0].text.items);
+    o.leaveScreen();
+    const plain = try o.plainText(gpa);
+    defer gpa.free(plain);
+    try std.testing.expectEqualStrings("one\ntwo\n> 1. Yes, I trust this folder\n  2. No\na\nb\nc\nd", plain);
+    // The shell's own output between commands never takes a screen.
+    var shell: Output = .init(gpa);
+    defer shell.deinit();
+    try shell.feed("\x1b[?2004hprompt");
+    try std.testing.expect(shell.full == null);
+}
+
