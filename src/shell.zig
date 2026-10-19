@@ -167,6 +167,10 @@ pub const Shell = struct {
             return;
         };
         s.remote = .{ .session = session, .command = cmd, .host = h };
+        // The remote end is an interactive shell, not a program drawing in
+        // place: bash 5 and zsh turn bracketed paste on at every prompt,
+        // which would take the block for a screen and hide its bar.
+        session.output.inline_ok = false;
     }
 
     fn endRemote(s: *Shell, code: i32) void {

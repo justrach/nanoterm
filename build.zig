@@ -4,10 +4,13 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const nanoui = b.dependency("nanoui", .{ .target = target, .optimize = optimize }).module("nanoui");
+    // Release packages leave the debug information out (tools/package-linux.sh).
+    const strip = b.option(bool, "strip", "Leave debug information out of nanoterm");
     const mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
+        .strip = strip,
         .imports = &.{.{ .name = "nanoui", .module = nanoui }},
     });
     const exe = b.addExecutable(.{ .name = "nanoterm", .root_module = mod });

@@ -138,7 +138,9 @@ test "the Settings page: account, agents, appearance, updates" {
     const arena = arena_state.allocator();
     const home = "/tmp/nanoterm-test-settings-view";
     std.Io.Dir.cwd().deleteTree(io, home) catch {};
-    try std.Io.Dir.cwd().createDirPath(io, home);
+    try std.Io.Dir.cwd().createDirPath(io, home ++ "/.local/bin");
+    // graff installed (a stand-in), wherever the test runs.
+    try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = home ++ "/.local/bin/graff", .data = "#!/bin/sh\n", .flags = .{ .permissions = .executable_file } });
     var env: std.process.Environ.Map = .init(arena);
     try env.put("HOME", home);
     try env.put("PATH", "/usr/bin:/bin");
@@ -149,7 +151,7 @@ test "the Settings page: account, agents, appearance, updates" {
     defer w.deinit();
     _ = try w.newTab(home);
     var t: ui.Tester = undefined;
-    try t.init(gpa, .init(&w, view.view), .{ .width = 1000, .height = 900, .theme = theme.ui() });
+    try t.init(gpa, .init(&w, view.view), .{ .width = 1000, .height = 1400, .theme = theme.ui() });
     defer t.deinit();
     t.settle(1);
     w.openSettings();

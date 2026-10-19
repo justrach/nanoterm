@@ -89,7 +89,7 @@ fn start(c: *ui.Context, w: *Workspace) void {
         w.shared.prefs.setAgents(true);
         w.onboarding = .agents;
     }
-    if (choice(c, "ob-plain", "terminal", "Just the terminal", "Agents off: everything typed runs, nothing is sent anywhere. Turn them on any time in Settings (⌘,).", false, false)) {
+    if (choice(c, "ob-plain", "terminal", "Just the terminal", if (@import("binds.zig").mac) "Agents off: everything typed runs, nothing is sent anywhere. Turn them on any time in Settings (⌘,)." else "Agents off: everything typed runs, nothing is sent anywhere. Turn them on any time in Settings (Ctrl+,).", false, false)) {
         w.shared.prefs.setAgents(false);
         w.onboarding = .keys;
     }

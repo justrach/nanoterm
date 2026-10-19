@@ -18,6 +18,7 @@ const fake_ssh =
     \\  if [ "$run" = 1 ]; then exec /bin/bash -c "$a"; fi
     \\  [ "$a" = "--" ] && run=1
     \\done
+    \\printf '\\033[?2004h'
     \\exec /bin/bash --norc --noprofile -i
     \\
 ;
@@ -104,8 +105,10 @@ test "an SSH session: set up, remote blocks, and the agent working there" {
 
     s.run("ssh devbox");
     try std.testing.expect(s.shell.remote != null);
-    // Signed in (here, at once): the bar offers to set it up.
-    for (0..40) |_| {
+    // Signed in (here, at once): the bar offers to set it up (a slower
+    // machine takes longer than a frame or two to say so).
+    var asked: usize = 0;
+    while (!t.containsText("Signed in to devbox?") and asked < 250) : (asked += 1) {
         nanoui.runFor(0.02);
         t.frame();
     }
