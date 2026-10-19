@@ -77,10 +77,16 @@ fn actions(c: *ui.Context, w: *Workspace, s: *Session) void {
         ui.icon(c, "paperclip", .{ .size = 13, .color = theme.muted });
     }
     modePill(c, s);
-    if (s.vim != .insert) {
-        const d = ui.div(c).row().px(8).py(3).rounded(6).bg(theme.accent.alpha(0.16));
+    // Vim's mode, as its -- INSERT -- line shows it: Esc for normal mode.
+    if (w.shared.prefs.keys == .vim) {
+        const insert = s.vim == .insert;
+        const d = ui.div(c).row().px(8).py(3).rounded(6).bg(theme.accent.alpha(if (insert) 0.07 else 0.16));
         defer d.end();
-        ui.text(c, if (s.vim == .visual) "VISUAL" else "NORMAL", .{ .size = 10.5, .weight = .bold, .mono = true, .color = theme.accent });
+        ui.text(c, switch (s.vim) {
+            .insert => "INSERT",
+            .normal => "NORMAL",
+            .visual => "VISUAL",
+        }, .{ .size = 10.5, .weight = .bold, .mono = true, .color = theme.accent });
     }
     if (s.mode() == .agent) if (assist.attached(s)) |b| {
         // The selected block goes with the prompt; ✕ leaves it out.

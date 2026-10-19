@@ -115,6 +115,8 @@ test "the keys chosen reach the input: Vim's normal mode, Emacs's kill and yank"
     f.shared.prefs.setKeys(.vim);
     t.typeText("echo hi there");
     t.settle(0.2);
+    // Vim's insert mode says so, as its -- INSERT -- line does.
+    try std.testing.expect(t.hasText("INSERT"));
     try std.testing.expect(t.shortcut(.{ .key = ui.Shortcut.escape }));
     t.settle(0.2);
     try std.testing.expect(s.vim == .normal);
