@@ -28,6 +28,7 @@ pub fn card(c: *ui.Context, w: *Workspace) void {
     account(c, w);
     agentList(c, w);
     look(c, w);
+    privacy(c, w);
     updates(c, w);
 }
 
@@ -41,7 +42,7 @@ fn box(c: *ui.Context) ui.Div {
     return ui.div(c).column().wFull().p(14).gap(10).bg(theme.background).rounded(10).border(theme.border);
 }
 
-fn account(c: *ui.Context, w: *Workspace) void {
+pub fn account(c: *ui.Context, w: *Workspace) void {
     const s = section(c, "Codegraff");
     defer s.end();
     const b = box(c);
@@ -84,7 +85,7 @@ fn account(c: *ui.Context, w: *Workspace) void {
     }
 }
 
-fn agentList(c: *ui.Context, w: *Workspace) void {
+pub fn agentList(c: *ui.Context, w: *Workspace) void {
     const s = section(c, "Agents");
     defer s.end();
     const b = box(c);
@@ -151,6 +152,16 @@ fn look(c: *ui.Context, w: *Workspace) void {
         if (ui.segmented(c, &names, &picked)) w.shared.setAppearance(order[picked]);
     }
     {
+        const r = ui.div(c).row().wFull().itemsCenter();
+        defer r.end();
+        ui.text(c, "Keys in the input", .{ .size = 13 });
+        ui.spacer(c);
+        const names = [_][]const u8{ "Standard", "Emacs", "Vim" };
+        const order = [_]ui.Keymap{ .system, .emacs, .vim };
+        var picked: usize = std.mem.indexOfScalar(ui.Keymap, &order, w.shared.prefs.keys) orelse 0;
+        if (ui.segmented(c, &names, &picked)) w.shared.prefs.setKeys(order[picked]);
+    }
+    {
         const r = ui.div(c).row().wFull().gap(8).itemsCenter();
         defer r.end();
         ui.text(c, "Text size", .{ .size = 13 });
@@ -160,6 +171,34 @@ fn look(c: *ui.Context, w: *Workspace) void {
         if (ui.button(c, "", .{ .size = 11, .icon = "plus" }).clicked) w.zoomBy(0.1);
         if (ui.button(c, "Reset", .{ .variant = .ghost, .size = 12 }).clicked) w.zoom = 1;
     }
+}
+
+/// Anonymous usage analytics: shared or not, under the privacy policy.
+fn privacy(c: *ui.Context, w: *Workspace) void {
+    const s = section(c, "Privacy");
+    defer s.end();
+    const b = box(c);
+    defer b.end();
+    const an = @import("analytics.zig");
+    {
+        const r = ui.div(c).row().wFull().gap(10).itemsCenter();
+        defer r.end();
+        const t = ui.div(c).column().grow().gap(2);
+        {
+            defer t.end();
+            ui.text(c, "Share anonymous usage", .{ .size = 13 });
+            ui.text(c, "Which features you use, the app's version and your OS. Never your commands, prompts, files or output.", .{ .size = 11.5, .color = theme.muted, .wrap = true });
+        }
+        var on = w.shared.prefs.analytics == .on;
+        if (ui.toggle(c, "", &on)) w.shared.prefs.setAnalytics(if (on) .on else .off, w.shared.io);
+    }
+    // The id events carry, to ask for them to be deleted.
+    const id = &w.shared.prefs.install_id;
+    if (!std.mem.allEqual(u8, id, '0')) ui.text(c, c.print("Install ID: {s}", .{id}), .{ .size = 11.5, .mono = true, .color = theme.muted });
+    const links = ui.div(c).row().gap(14);
+    defer links.end();
+    if (ui.button(c, "Privacy Policy", .{ .variant = .ghost, .size = 11.5, .icon = "hand.raised" }).clicked) _ = nanoui.shell.openUrl(an.privacy_url);
+    if (ui.button(c, "Terms", .{ .variant = .ghost, .size = 11.5, .icon = "doc.text" }).clicked) _ = nanoui.shell.openUrl(an.terms_url);
 }
 
 fn updates(c: *ui.Context, w: *Workspace) void {

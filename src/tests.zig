@@ -36,6 +36,9 @@ test {
     _ = @import("marks.zig");
     _ = @import("agents.zig");
     _ = @import("tests_settings.zig");
+    _ = @import("tests_onboarding.zig");
+    _ = @import("tests_followup.zig");
+    _ = @import("analytics.zig");
     _ = @import("tests_screen.zig");
     _ = @import("split.zig");
     _ = @import("commands.zig");

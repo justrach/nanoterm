@@ -227,8 +227,10 @@ pub const Session = struct {
     timeline_top: ?f32 = null,
     sticky: ?*blocks.Block = null,
     sticky_y: f32 = 0,
-    /// How tall its input, floating over the timeline, was in the last frame.
+    /// How tall its input, floating over the timeline, was in the last frame;
+    /// and whether it was in Vim's normal mode.
     composer_h: f32 = 124,
+    vim_normal: bool = false,
 
     /// A session whose shell starts in `cwd`.
     pub fn create(shared: *Shared, cwd_: []const u8) !*Session {
@@ -373,13 +375,14 @@ pub const Session = struct {
         if (a.lock) |m| return m;
         // Pictures are for the agent.
         if (a.attachments.items.items.len > 0) return .agent;
-        if (a.shared.jev.answer(a.input.text())) |k| return if (k == .agent) .agent else .terminal;
+        // A reply to the agent stays with it; Jev reads the text alone.
+        if (!(a.followUp() and a.guess.kind == .agent)) if (a.shared.jev.answer(a.input.text())) |k| return if (k == .agent) .agent else .terminal;
         return if (a.guess.kind == .agent) .agent else .terminal;
     }
 
     /// Whether Jev decided the mode of what is typed.
     pub fn decidedByJev(a: *const Session) bool {
-        return a.lock == null and !a.shell.busy() and a.shared.jev.answer(a.input.text()) != null;
+        return a.lock == null and !a.shell.busy() and !(a.followUp() and a.guess.kind == .agent) and a.shared.jev.answer(a.input.text()) != null;
     }
 
     /// The agent answered last: a reply is likelier a follow-up.
@@ -477,7 +480,11 @@ pub const Session = struct {
                 \\{s}
             , .{ r.host, r.session, r.cwd, r.dir, std.mem.trimStart(u8, r.session[3..], " "), text }) catch text;
             ag.promptWith(heading orelse text, said, a.attachments.take()) catch return;
-        } else ag.promptWith(heading, text, a.attachments.take()) catch return;
+        } else {
+            const said = helpers.followShell(a, ag, text);
+            ag.promptWith(if (said.ptr == text.ptr) heading else heading orelse text, said, a.attachments.take()) catch return;
+        }
+        a.shared.prefs.track("agent_prompt", .{ .agent = @tagName(a.which) });
         if (ag.current()) |t| {
             a.timeline.append(a.gpa, .{ .turn = t }) catch return;
             a.pinLast();

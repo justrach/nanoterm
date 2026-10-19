@@ -73,6 +73,11 @@ fn focusOnPress(w: *Workspace, c: *ui.Context) void {
 fn shortcuts(w: *Workspace, c: *ui.Context) void {
     const S = ui.Shortcut;
     const s = w.focused();
+    // Onboarding is answered, not dismissed.
+    if (w.overlay == .onboarding) {
+        _ = c.shortcut(.{ .key = S.escape });
+        return;
+    }
     if (c.shortcut(binds.shortcut("Cmd+P")) or c.shortcut(binds.shortcut("Cmd+Shift+P"))) w.openPalette();
     if (c.shortcut(binds.shortcut("Cmd+Shift+M"))) w.openModels();
     if (w.overlay != .none) {
@@ -122,6 +127,14 @@ fn shortcuts(w: *Workspace, c: *ui.Context) void {
     if (c.shortcut(.{ .key = S.tab })) assist.tab(s, s.caret);
     if (c.shortcut(.{ .key = S.up })) s.historyStep(true);
     if (c.shortcut(.{ .key = S.down })) s.historyStep(false);
+    const keys = w.shared.prefs.keys;
+    // Emacs's ^P and ^N: the history, as readline has them.
+    if (keys == .emacs) {
+        if (c.shortcut(.{ .key = 'p', .ctrl = true })) s.historyStep(true);
+        if (c.shortcut(.{ .key = 'n', .ctrl = true })) s.historyStep(false);
+    }
+    // Vim's Esc in insert mode is the input's (to normal mode).
+    if (keys == .vim and !s.vim_normal) return;
     if (c.shortcut(.{ .key = S.escape })) {
         if (s.agent) |ag| if (ag.status == .working) return ag.cancel();
         if (s.selected != null) {

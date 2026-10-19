@@ -96,6 +96,10 @@ fn shellSyntax(text: []const u8) bool {
     return false;
 }
 
+/// What follows a command word only in a reply: "go on", "do it", "run
+/// that again"; never a command's argument.
+const reply_words = [_][]const u8{ "on", "ahead", "it", "that", "this", "them", "again", "me", "more", "please" };
+
 /// Guesses what `text` is. `follow_up`: the agent answered last, so a
 /// reply is likelier (Warp keeps follow-ups with the agent).
 pub fn guess(text_in: []const u8, commands: *const Commands, follow_up: bool) Guess {
@@ -129,8 +133,13 @@ pub fn guess(text_in: []const u8, commands: *const Commands, follow_up: bool) Gu
     for (words[0..n]) |w| english_words += @intFromBool(isEnglish(w));
     const rest_english = english_words - @intFromBool(isEnglish(first));
     if (command) {
-        // "git status", "make test": a command and its arguments.
-        if (n <= 2) return .{ .kind = .shell, .sure = !isEnglish(words[1]) or !follow_up };
+        // "git status", "make test": a command and its arguments. After
+        // the agent answered, two plain words ("go on", "do it") reply.
+        if (n <= 2) {
+            var b2: [32]u8 = undefined;
+            if (follow_up and contains(&reply_words, lower(&b2, std.mem.trim(u8, words[1], ".,!")))) return .{ .kind = .agent, .sure = true };
+            return .{ .kind = .shell, .sure = !isEnglish(words[1]) or !follow_up };
+        }
         // "find the biggest files here": a command word opening a sentence.
         const ratio = @as(f32, @floatFromInt(rest_english)) / @as(f32, @floatFromInt(n - 1));
         if (ratio >= 0.75 and n >= 4) return .{ .kind = .agent, .sure = ratio >= 0.9 };
@@ -184,6 +193,14 @@ test "commands and requests" {
         try std.testing.expectEqual(Kind.agent, g.kind);
     }
     try std.testing.expect(guess("git status", &c, false).sure);
+    // Replies to the agent: a command word and a plain one.
+    c.add("go");
+    try std.testing.expectEqual(Kind.agent, guess("go on", &c, true).kind);
+    try std.testing.expectEqual(Kind.shell, guess("go on", &c, false).kind);
+    try std.testing.expectEqual(Kind.shell, guess("git status", &c, true).kind);
+    try std.testing.expectEqual(Kind.shell, guess("go build", &c, true).kind);
+    try std.testing.expectEqual(Kind.shell, guess("make test", &c, true).kind);
+    try std.testing.expectEqual(Kind.agent, guess("open it", &c, true).kind);
     try std.testing.expect(isEnglish("Files"));
     try std.testing.expect(isEnglish("failing"));
     try std.testing.expect(!isEnglish("zig"));

@@ -13,7 +13,7 @@ const Shared = session_mod.Shared;
 pub const Tree = split.Tree(*Session);
 
 /// A panel over the panes: the command palette, the model picker.
-pub const Overlay = enum { none, palette, models, settings };
+pub const Overlay = enum { none, palette, models, settings, onboarding };
 pub const Node = Tree.Node;
 
 pub const Tab = struct {
@@ -38,6 +38,8 @@ pub const Workspace = struct {
     updater: ?*nanoui.Updater = null,
     update_later: [32]u8 = undefined,
     update_later_len: usize = 0,
+    /// The first launch's step (view_onboarding.zig).
+    onboarding: @import("view_onboarding.zig").Step = .start,
     tabs: std.ArrayList(*Tab) = .empty,
     active: usize = 0,
     /// Where the panes of the active tab were laid out in the last frame.

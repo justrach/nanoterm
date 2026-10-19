@@ -245,7 +245,9 @@ fn codeBlock(c: *ui.Context, lang: []const u8, src: []const u8) void {
     if (mermaid) {
         const d = ui.div(c).column().wFull().p(14).bg(theme.background).clip();
         defer d.end();
-        if (@import("view_mermaid.zig").diagram(c, src)) return;
+        // The width it had in the last frame (the window's at first).
+        const room = if (c.rects.get(c.node(d.index).id)) |r| r.w - 28 else c.size.w - 200;
+        if (@import("view_mermaid.zig").diagram(c, src, room)) return;
         ui.text(c, "This kind of diagram shows as its source.", .{ .size = 11.5, .color = theme.muted });
     }
     const lines = ui.div(c).column().wFull().px(14).py(10).gap(0);

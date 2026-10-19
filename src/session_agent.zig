@@ -23,6 +23,19 @@ pub fn syncRemote(a: *Session, ag: *agent_mod.Agent) void {
     };
 }
 
+/// Keeps the agent where the shell is: when the shell has moved since the
+/// agent last heard (a `cd` after it started), its tools run in the new
+/// directory, and the prompt says so; else the prompt as it is.
+pub fn followShell(a: *Session, ag: *agent_mod.Agent, text: []const u8) []const u8 {
+    const now = a.cwd();
+    if (std.mem.eql(u8, now, ag.cwd)) return text;
+    const said = std.fmt.allocPrint(a.arena, "[nanoterm: the terminal is now in `{s}` (it was `{s}`); work there.]\n\n{s}", .{ now, ag.cwd, text }) catch return text;
+    const dupe = a.gpa.dupe(u8, now) catch return text;
+    a.gpa.free(ag.cwd);
+    ag.cwd = dupe;
+    return said;
+}
+
 /// Gives the agent nanoterm's MCP server, so it can show visuals here.
 pub fn offerVisuals(a: *Session, ag: *agent_mod.Agent) void {
     const h = a.shared.visuals orelse return;

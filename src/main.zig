@@ -91,5 +91,9 @@ pub fn main(init: std.process.Init) !void {
         .changed = .{ .ctx = &shared, .func = updateReady },
     });
     defer w.updater.?.deinit();
+    if (w.updater.?.current.len > 0) shared.prefs.telemetry.version = w.updater.?.current;
+    shared.prefs.track("app_open", .{});
+    // The first launch: a few choices before anything else.
+    if (!shared.prefs.onboarded) w.overlay = .onboarding;
     try app.run();
 }

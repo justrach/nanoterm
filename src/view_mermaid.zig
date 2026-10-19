@@ -15,10 +15,11 @@ pub const label_style: ui.TextStyle = .{ .size = 12.5 };
 pub const small_style: ui.TextStyle = .{ .size = 11.5 };
 
 /// Draws the diagram in `src`; false when it is a kind not drawn here.
-pub fn diagram(c: *ui.Context, src: []const u8) bool {
+/// `room`: the width it has.
+pub fn diagram(c: *ui.Context, src: []const u8, room: f32) bool {
     const d = mm.parse(c.alloc(), src);
     switch (d) {
-        .flow => |f| if (f.nodes.len > 0) flow(c, f) else return false,
+        .flow => |f| if (f.nodes.len > 0) flow(c, f, room) else return false,
         .seq => |s| if (s.actors.len > 0) @import("view_mermaid_seq.zig").seq(c, s) else return false,
         .other => return false,
     }
@@ -115,9 +116,10 @@ fn hexagonHalf(t: f32) f32 {
     return @min(1, 0.72 + 0.28 * (1 - @abs(2 * t - 1)) / 0.5);
 }
 
-const Box = struct { x: f32 = 0, y: f32 = 0, w: f32, h: f32, rank: usize = 0, order: f32 = 0 };
+/// A node's box; `r0`…`r1` its rank's extent along the flow.
+const Box = struct { x: f32 = 0, y: f32 = 0, w: f32, h: f32, rank: usize = 0, order: f32 = 0, r0: f32 = 0, r1: f32 = 0 };
 
-fn flow(c: *ui.Context, f: mm.Flow) void {
+fn flow(c: *ui.Context, f: mm.Flow, room: f32) void {
     const a = c.alloc();
     const n = f.nodes.len;
     const boxes = a.alloc(Box, n) catch return;
@@ -137,14 +139,68 @@ fn flow(c: *ui.Context, f: mm.Flow) void {
     const back = rank(a, f, boxes) catch return;
     order(a, f, boxes, back) catch return;
 
+    // Too wide for its room: the other way round, if that is narrower (a
+    // wide graph top-down is a tall one left-right, scrolled with the rest).
+    var dir = f.dir;
+    var size = place(a, dir, boxes, back) catch return;
+    if (size[0] > room) {
+        const turned: mm.Dir = switch (dir) {
+            .down => .right,
+            .up => .left,
+            .right => .down,
+            .left => .up,
+        };
+        const other = place(a, turned, boxes, back) catch return;
+        if (other[0] < size[0]) {
+            dir = turned;
+            size = other;
+        } else _ = place(a, dir, boxes, back) catch return;
+    }
+    // Still too wide: smaller, as far as stays readable.
+    const k = std.math.clamp(room / size[0], min_scale, 1);
+    for (boxes) |*b| {
+        b.x *= k;
+        b.y *= k;
+        b.w *= k;
+        b.h *= k;
+        b.r0 *= k;
+        b.r1 *= k;
+    }
+    const W = size[0] * k;
+    const H = size[1] * k;
+
+    const outer = ui.div(c).row().wFull().justifyCenter();
+    defer outer.end();
+    const canvas = ui.div(c).w(W).h(H);
+    defer canvas.end();
+    const ink = theme.muted;
+    var back_k: f32 = 0;
+    for (f.edges, 0..) |e, i| {
+        if (e.from >= n or e.to >= n) continue;
+        const s = boxes[e.from];
+        const t = boxes[e.to];
+        if (back[i]) {
+            back_k += 1;
+            backEdge(c, dir, s, t, e, W, H, back_k, ink, k);
+        } else forwardEdge(c, dir, s, t, e, ink, k);
+    }
+    for (f.nodes, boxes) |node, b| shape(c, node, b, k);
+}
+
+/// The smallest a diagram is drawn to fit: its labels stay legible.
+const min_scale: f32 = 0.62;
+
+/// Places ranked, ordered boxes going `dir`; the diagram's size.
+fn place(a: std.mem.Allocator, dir: mm.Dir, boxes: []Box, back: []const bool) ![2]f32 {
+    const n = boxes.len;
     // Ranks one after another along the flow; nodes side by side across.
-    const vertical = f.dir == .down or f.dir == .up;
+    const vertical = dir == .down or dir == .up;
     const across_gap: f32 = 28;
     const along_gap: f32 = 54;
     var ranks: usize = 0;
     for (boxes) |b| ranks = @max(ranks, b.rank + 1);
-    const thick = a.alloc(f32, ranks) catch return;
-    const span = a.alloc(f32, ranks) catch return;
+    const thick = try a.alloc(f32, ranks);
+    const span = try a.alloc(f32, ranks);
     @memset(thick, 0);
     @memset(span, 0);
     for (boxes) |b| {
@@ -154,32 +210,36 @@ fn flow(c: *ui.Context, f: mm.Flow) void {
     var widest: f32 = 0;
     for (span) |s| widest = @max(widest, s - across_gap);
     var along: f32 = 0;
-    const starts = a.alloc(f32, ranks) catch return;
+    const starts = try a.alloc(f32, ranks);
     for (0..ranks) |r| {
         starts[r] = along;
         along += thick[r] + along_gap;
     }
     along -= along_gap;
     // Across: each rank centered, in its order.
-    const idx = a.alloc(usize, n) catch return;
+    const idx = try a.alloc(usize, n);
     for (idx, 0..) |*v, i| v.* = i;
     std.mem.sort(usize, idx, boxes, struct {
         fn lt(bs: []Box, x: usize, y: usize) bool {
             return if (bs[x].rank != bs[y].rank) bs[x].rank < bs[y].rank else bs[x].order < bs[y].order;
         }
     }.lt);
-    const cursor = a.alloc(f32, ranks) catch return;
+    const cursor = try a.alloc(f32, ranks);
     for (0..ranks) |r| cursor[r] = (widest - (span[r] - across_gap)) / 2;
+    const pad: f32 = 12;
     for (idx) |i| {
         const b = &boxes[i];
         const across = if (vertical) b.w else b.h;
         const pos = starts[b.rank] + ((thick[b.rank] - (if (vertical) b.h else b.w)) / 2);
+        const forward = dir == .down or dir == .right;
+        b.r0 = pad + if (forward) starts[b.rank] else along - starts[b.rank] - thick[b.rank];
+        b.r1 = b.r0 + thick[b.rank];
         if (vertical) {
-            b.x = cursor[b.rank];
-            b.y = if (f.dir == .down) pos else along - pos - b.h;
+            b.x = pad + cursor[b.rank];
+            b.y = pad + if (forward) pos else along - pos - b.h;
         } else {
-            b.y = cursor[b.rank];
-            b.x = if (f.dir == .right) pos else along - pos - b.w;
+            b.y = pad + cursor[b.rank];
+            b.x = pad + if (forward) pos else along - pos - b.w;
         }
         cursor[b.rank] += across + across_gap;
     }
@@ -188,30 +248,11 @@ fn flow(c: *ui.Context, f: mm.Flow) void {
     for (back) |is| if (is) {
         backs += 1;
     };
-    const pad: f32 = 12;
-    const W = (if (vertical) widest else along) + 2 * pad + backs * 10 + (if (backs > 0) @as(f32, 10) else 0);
-    const H = (if (vertical) along else widest) + 2 * pad + (if (!vertical and backs > 0) backs * 10 + 10 else 0);
-    for (boxes) |*b| {
-        b.x += pad;
-        b.y += pad;
-    }
-
-    const outer = ui.div(c).row().wFull().justifyCenter();
-    defer outer.end();
-    const canvas = ui.div(c).w(W).h(H);
-    defer canvas.end();
-    const ink = theme.muted;
-    var back_k: f32 = 0;
-    for (f.edges, 0..) |e, k| {
-        if (e.from >= n or e.to >= n) continue;
-        const s = boxes[e.from];
-        const t = boxes[e.to];
-        if (back[k]) {
-            back_k += 1;
-            backEdge(c, f.dir, s, t, e, W, H, back_k, ink);
-        } else forwardEdge(c, f.dir, s, t, e, ink);
-    }
-    for (f.nodes, boxes) |node, b| shape(c, node, b);
+    const lanes = if (backs > 0) backs * 10 + 10 else 0;
+    return .{
+        (if (vertical) widest else along) + 2 * pad + (if (vertical) lanes else 0),
+        (if (vertical) along else widest) + 2 * pad + (if (vertical) 0 else lanes),
+    };
 }
 
 /// Edges whose target is ranked before its source, in the order given.
@@ -281,7 +322,7 @@ fn order(a: std.mem.Allocator, f: mm.Flow, boxes: []Box, back: []const bool) !vo
     }
 }
 
-fn shape(c: *ui.Context, node: mm.Node, b: Box) void {
+fn shape(c: *ui.Context, node: mm.Node, b: Box, k: f32) void {
     // Opaque: the strips of a diamond overlap.
     const fill = if (node.shape == .diamond) theme.background.mix(theme.agent, 0.12) else theme.panel;
     const edge = if (node.shape == .diamond) theme.background.mix(theme.agent, 0.6) else theme.border_strong;
@@ -303,12 +344,14 @@ fn shape(c: *ui.Context, node: mm.Node, b: Box) void {
         },
         .rect, .flag => panel(c, b.x, b.y, b.w, b.h, fill, edge, 4),
     }
-    label(c, b.x, b.y, b.w, b.h, node.label, label_style);
+    var st = label_style;
+    st.size *= k;
+    label(c, b.x, b.y, b.w, b.h, node.label, st);
 }
 
 /// From the source's side facing the target to the target's facing side:
 /// out, across at the middle of the gap, and in.
-fn forwardEdge(c: *ui.Context, dir: mm.Dir, s: Box, t: Box, e: mm.Edge, ink: ui.Color) void {
+fn forwardEdge(c: *ui.Context, dir: mm.Dir, s: Box, t: Box, e: mm.Edge, ink: ui.Color, k: f32) void {
     const vertical = dir == .down or dir == .up;
     if (vertical) {
         const sx = s.x + s.w / 2;
@@ -318,59 +361,67 @@ fn forwardEdge(c: *ui.Context, dir: mm.Dir, s: Box, t: Box, e: mm.Edge, ink: ui.
         const ty = if (down) t.y else t.y + t.h;
         // Across just before the target: an edge past a rank keeps to its
         // column, not across the nodes between.
-        const mid = if (t.rank == s.rank + 1) (sy + ty) / 2 else if (down) ty - 22 else ty + 22;
+        // Between adjacent ranks, all on one line midway across the gap.
+        const mid = if (t.rank == s.rank + 1) gapMid(s, t, down) else if (down) ty - 22 else ty + 22;
         line(c, sx, sy, sx, mid, e.line, ink);
         line(c, sx, mid, tx, mid, e.line, ink);
         line(c, tx, mid, tx, ty, e.line, ink);
         if (e.head) arrow(c, tx, ty, if (down) .down else .up, ink);
         if (e.tail) arrow(c, sx, sy, if (down) .up else .down, ink);
-        if (e.label.len > 0) edgeLabel(c, (sx + tx) / 2, if (@abs(sx - tx) < 1) (sy + ty) / 2 else mid, e.label);
+        if (e.label.len > 0) edgeLabel(c, (sx + tx) / 2, if (@abs(sx - tx) < 1) (sy + ty) / 2 else mid, e.label, k);
     } else {
         const sy = s.y + s.h / 2;
         const ty = t.y + t.h / 2;
         const right = t.x > s.x;
         const sx = if (right) s.x + s.w else s.x;
         const tx = if (right) t.x else t.x + t.w;
-        const mid = if (t.rank == s.rank + 1) (sx + tx) / 2 else if (right) tx - 22 else tx + 22;
+        const mid = if (t.rank == s.rank + 1) gapMid(s, t, right) else if (right) tx - 22 else tx + 22;
         line(c, sx, sy, mid, sy, e.line, ink);
         line(c, mid, sy, mid, ty, e.line, ink);
         line(c, mid, ty, tx, ty, e.line, ink);
         if (e.head) arrow(c, tx, ty, if (right) .right else .left, ink);
         if (e.tail) arrow(c, sx, sy, if (right) .left else .right, ink);
-        if (e.label.len > 0) edgeLabel(c, mid, (sy + ty) / 2, e.label);
+        if (e.label.len > 0) edgeLabel(c, mid, (sy + ty) / 2, e.label, k);
     }
 }
 
+/// The middle of the gap between a rank and the next, `forward` the way
+/// the flow goes.
+fn gapMid(s: Box, t: Box, forward: bool) f32 {
+    return if (forward) (s.r1 + t.r0) / 2 else (s.r0 + t.r1) / 2;
+}
+
 /// Round the diagram's far side, back to an earlier node.
-fn backEdge(c: *ui.Context, dir: mm.Dir, s: Box, t: Box, e: mm.Edge, W: f32, H: f32, k: f32, ink: ui.Color) void {
+fn backEdge(c: *ui.Context, dir: mm.Dir, s: Box, t: Box, e: mm.Edge, W: f32, H: f32, lane_k: f32, ink: ui.Color, k: f32) void {
     if (dir == .down or dir == .up) {
-        const lane = W - 8 - (k - 1) * 10;
+        const lane = W - 8 - (lane_k - 1) * 10;
         const sy = s.y + s.h / 2;
         const ty = t.y + t.h / 2;
         line(c, s.x + s.w, sy, lane, sy, e.line, ink);
         line(c, lane, sy, lane, ty, e.line, ink);
         line(c, lane, ty, t.x + t.w, ty, e.line, ink);
         if (e.head) arrow(c, t.x + t.w, ty, .left, ink);
-        if (e.label.len > 0) edgeLabel(c, lane, (sy + ty) / 2, e.label);
+        if (e.label.len > 0) edgeLabel(c, lane, (sy + ty) / 2, e.label, k);
     } else {
-        const lane = H - 8 - (k - 1) * 10;
+        const lane = H - 8 - (lane_k - 1) * 10;
         const sx = s.x + s.w / 2;
         const tx = t.x + t.w / 2;
         line(c, sx, s.y + s.h, sx, lane, e.line, ink);
         line(c, sx, lane, tx, lane, e.line, ink);
         line(c, tx, lane, tx, t.y + t.h, e.line, ink);
         if (e.head) arrow(c, tx, t.y + t.h, .up, ink);
-        if (e.label.len > 0) edgeLabel(c, (sx + tx) / 2, lane, e.label);
+        if (e.label.len > 0) edgeLabel(c, (sx + tx) / 2, lane, e.label, k);
     }
 }
 
 /// An edge's label on a patch of the background, centered at (x, y).
-fn edgeLabel(c: *ui.Context, x: f32, y: f32, text: []const u8) void {
-    const sz = measure(c, text, small_style);
+fn edgeLabel(c: *ui.Context, x: f32, y: f32, text: []const u8, k: f32) void {
+    var st = small_style;
+    st.size *= k;
+    st.color = theme.muted;
+    const sz = measure(c, text, st);
     const w = sz[0] + 10;
     const h = sz[1] + 4;
     rect(c, x - w / 2, y - h / 2, w, h, theme.background, 4);
-    var st = small_style;
-    st.color = theme.muted;
     label(c, x - w / 2, y - h / 2, w, h, text, st);
 }

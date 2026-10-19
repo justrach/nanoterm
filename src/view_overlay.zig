@@ -17,6 +17,13 @@ const rows = 8;
 
 pub fn overlay(c: *ui.Context, w: *Workspace) void {
     if (w.overlay == .none) return;
+    // Onboarding: centered, and a click outside doesn't skip it.
+    if (w.overlay == .onboarding) {
+        const s = ui.div(c).absolute().sizeFull().column().itemsCenter().justifyCenter().bg(.{ .a = if (theme.dark) 0.5 else 0.22 });
+        defer s.end();
+        _ = s.interaction();
+        return @import("view_onboarding.zig").card(c, w);
+    }
     const scrim = ui.div(c).absolute().sizeFull().column().itemsCenter().bg(.{ .a = if (theme.dark) 0.4 else 0.16 });
     c.node(scrim.index).style.padding.top = 64;
     defer scrim.end();
@@ -30,7 +37,7 @@ pub fn overlay(c: *ui.Context, w: *Workspace) void {
     switch (w.overlay) {
         .palette => {},
         .models => modelsView(c, w),
-        .none, .settings => {},
+        .none, .settings, .onboarding => {},
     }
 }
 
