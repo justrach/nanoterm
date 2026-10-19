@@ -24,10 +24,11 @@ pub const win = struct {
 /// When each scene starts, in seconds; the last ends the video.
 pub const at = struct {
     pub const term = 2.6;
-    pub const harness = 14.6;
-    pub const bench = 19.0;
-    pub const fixes = 24.2;
-    pub const end = 27.0;
+    pub const harness = 13.6;
+    pub const graff = 17.4;
+    pub const bench = 21.0;
+    pub const fixes = 25.2;
+    pub const end = 27.3;
     pub const done = 30.0;
 };
 
@@ -53,8 +54,10 @@ pub const Director = struct {
             scene(c, t, 0, at.term, title, d);
         } else if (t < at.harness) {
             scene(c, t, at.term, at.harness, term, d);
+        } else if (t < at.graff) {
+            scene(c, t, at.harness, at.graff, harness, d);
         } else if (t < at.bench) {
-            scene(c, t, at.harness, at.bench, harness, d);
+            scene(c, t, at.graff, at.bench, graff, d);
         } else if (t < at.fixes) {
             scene(c, t, at.bench, at.fixes, bench, d);
         } else if (t < at.end) {
@@ -151,7 +154,7 @@ fn term(c: *ui.Context, d: *Director, t: f32) void {
         const lines = [_]struct { f32, []const u8 }{
             .{ 0, "Commands run as blocks you can fold, copy and rerun" },
             .{ 2.6, "Ask your agent, in the same input" },
-            .{ 6.6, "Vim keys, even inside a command's output" },
+            .{ 6.0, "Vim keys, even inside a command's output" },
         };
         var shown: usize = 0;
         for (lines, 0..) |l, i| if (t >= l[0]) {
@@ -258,6 +261,73 @@ fn codegraffCard(c: *ui.Context, t: f32) void {
     const badge = ui.div(c).px(14).py(7).roundedFull().bg(theme.accent).opacity(part(t, 1.6, 0.4));
     defer badge.end();
     ui.text(c, "$1 free", .{ .size = 16, .weight = .bold, .color = theme.on_accent });
+}
+
+/// graff, Codegraff's own agent, against other harnesses on the same model,
+/// tasks and machine (codegraff's evals/, measured 2026-10-01): seconds per
+/// task over 21 tasks, 3 runs each; every arm passed every run.
+const graff_runs = [_]struct { []const u8, f32, bool }{
+    .{ "graff", 8.7, true },
+    .{ "Claude Code", 13.2, false },
+    .{ "OpenCode 2", 14.1, false },
+};
+
+fn graff(c: *ui.Context, _: *Director, t: f32) void {
+    const col = ui.div(c).column().sizeFull().px(150).py(56).gap(20).justifyCenter();
+    defer col.end();
+    {
+        const h = ui.div(c).column().gap(8);
+        defer h.end();
+        ui.text(c, "And graff, Codegraff's own agent, is quick", .{ .size = 38, .weight = .bold, .color = theme.text });
+        ui.text(c, "Same model, same tasks, same machine. Every harness passed every run.", .{ .size = 16, .color = theme.muted });
+    }
+    {
+        const r = ui.div(c).row().gap(28).itemsStart();
+        defer r.end();
+        graffCharts(c, t);
+    }
+    const note = ui.div(c).opacity(part(t, 1.6, 0.5));
+    defer note.end();
+    ui.text(c, "Codegraff's evals, measured 2026-10-01, 2-3 runs per task. On plain coding tasks alone, Claude Code and pi were a little faster; the lead is on tool-heavy (MCP) and sub-agent tasks.", .{ .size = 12.5, .color = theme.muted, .wrap = true });
+}
+
+/// Seconds per task beside the two headline differences.
+fn graffCharts(c: *ui.Context, t: f32) void {
+    {
+        // Seconds per task: shorter is better.
+        const left = ui.div(c).column().w(560).gap(10);
+        defer left.end();
+        ui.text(c, "Seconds per task, 21 tasks", .{ .size = 14, .weight = .semibold, .color = theme.muted });
+        for (graff_runs, 0..) |run, i| {
+            const f: f32 = @floatFromInt(i);
+            const grow = part(t, 0.3 + f * 0.12, 0.7);
+            const row = ui.div(c).row().gap(12).itemsCenter();
+            defer row.end();
+            {
+                const name = ui.div(c).w(120);
+                defer name.end();
+                ui.text(c, run[0], .{ .size = 15, .weight = if (run[2]) .bold else .medium, .color = if (run[2]) theme.text else theme.muted });
+            }
+            const b = ui.div(c).w(@max(3, 330 * run[1] / 14.1 * grow)).h(16).rounded(4).bg(if (run[2]) theme.accent else theme.faint);
+            b.end();
+            ui.text(c, c.print("{d:.1}s", .{run[1] * grow}), .{ .size = 14, .mono = true, .weight = if (run[2]) .bold else .regular, .color = if (run[2]) theme.text else theme.muted });
+        }
+    }
+    {
+        const right = ui.div(c).column().w(380).gap(12);
+        defer right.end();
+        const stats = [_]struct { []const u8, []const u8 }{
+            .{ "34% faster", "than Claude Code per task" },
+            .{ "up to 73% less", "list cost than the Codex app server" },
+        };
+        for (stats, 0..) |st, i| {
+            const f: f32 = @floatFromInt(i);
+            const card = ui.div(c).column().gap(4).px(20).py(14).rounded(14).bg(theme.background).border(theme.border).opacity(part(t, 0.9 + f * 0.25, 0.4));
+            defer card.end();
+            ui.text(c, st[0], .{ .size = 30, .weight = .bold, .color = theme.accent });
+            ui.text(c, st[1], .{ .size = 14, .color = theme.muted });
+        }
+    }
 }
 
 /// MB/s, median of 7 (bench/results/2026-10-19): nanoterm, Ghostty 1.3.1,

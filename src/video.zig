@@ -43,37 +43,37 @@ const Step = struct { at: f32, act: Act };
 const steps = [_]Step{
     .{ .at = T + 0.5, .act = .{ .type = .{ .text = data.test_cmd, .dur = 0.8 } } },
     .{ .at = T + 1.5, .act = .run_test },
-    .{ .at = T + 2.4, .act = .{ .type = .{ .text = data.question, .dur = 1.1, .agent = true } } },
-    .{ .at = T + 3.7, .act = .ask },
-    .{ .at = T + 6.6, .act = .{ .type = .{ .text = data.cat_cmd, .dur = 0.5 } } },
-    .{ .at = T + 7.2, .act = .run_cat },
-    .{ .at = T + 7.9, .act = .{ .key = ui.Shortcut.escape } },
-    .{ .at = T + 8.35, .act = .{ .chars = "k" } },
-    .{ .at = T + 8.85, .act = .{ .chars = "gg" } },
-    .{ .at = T + 9.3, .act = .{ .chars = "/" } },
-    .{ .at = T + 9.42, .act = .{ .chars = "V" } },
-    .{ .at = T + 9.54, .act = .{ .chars = "i" } },
-    .{ .at = T + 9.66, .act = .{ .chars = "m" } },
-    .{ .at = T + 9.9, .act = .{ .key = ui.Shortcut.enter } },
-    .{ .at = T + 10.4, .act = .{ .chars = "V" } },
-    .{ .at = T + 10.65, .act = .{ .chars = "j" } },
-    .{ .at = T + 10.9, .act = .{ .chars = "j" } },
-    .{ .at = T + 11.15, .act = .{ .chars = "y" } },
-    .{ .at = T + 11.6, .act = .{ .chars = "q" } },
+    .{ .at = T + 2.3, .act = .{ .type = .{ .text = data.question, .dur = 1.0, .agent = true } } },
+    .{ .at = T + 3.5, .act = .ask },
+    .{ .at = T + 6.0, .act = .{ .type = .{ .text = data.cat_cmd, .dur = 0.45 } } },
+    .{ .at = T + 6.55, .act = .run_cat },
+    .{ .at = T + 7.15, .act = .{ .key = ui.Shortcut.escape } },
+    .{ .at = T + 7.55, .act = .{ .chars = "k" } },
+    .{ .at = T + 8.0, .act = .{ .chars = "gg" } },
+    .{ .at = T + 8.4, .act = .{ .chars = "/" } },
+    .{ .at = T + 8.52, .act = .{ .chars = "V" } },
+    .{ .at = T + 8.64, .act = .{ .chars = "i" } },
+    .{ .at = T + 8.76, .act = .{ .chars = "m" } },
+    .{ .at = T + 9.0, .act = .{ .key = ui.Shortcut.enter } },
+    .{ .at = T + 9.45, .act = .{ .chars = "V" } },
+    .{ .at = T + 9.7, .act = .{ .chars = "j" } },
+    .{ .at = T + 9.95, .act = .{ .chars = "j" } },
+    .{ .at = T + 10.2, .act = .{ .chars = "y" } },
+    .{ .at = T + 10.6, .act = .{ .chars = "q" } },
 };
 
 const captions = [_]scenes.Caption{
-    .{ T + 7.8, T + 8.3, "Esc", "normal mode" },
-    .{ T + 8.3, T + 8.8, "k", "into the output" },
-    .{ T + 8.8, T + 9.25, "gg", "to the top" },
-    .{ T + 9.25, T + 10.3, "/Vim ⏎", "search" },
-    .{ T + 10.3, T + 11.5, "V j j y", "copy three lines" },
-    .{ T + 11.5, T + 12.0, "q", "back to the input" },
+    .{ T + 7.05, T + 7.5, "Esc", "normal mode" },
+    .{ T + 7.5, T + 7.95, "k", "into the output" },
+    .{ T + 7.95, T + 8.35, "gg", "to the top" },
+    .{ T + 8.35, T + 9.35, "/Vim ⏎", "search" },
+    .{ T + 9.35, T + 10.5, "V j j y", "copy three lines" },
+    .{ T + 10.5, T + 11.0, "q", "back to the input" },
 };
 
 /// When the agent's answer streams in, and when it is done.
-const answer_from = T + 4.0;
-const answer_to = T + 6.0;
+const answer_from = T + 3.8;
+const answer_to = T + 5.6;
 
 /// The times sounds go with (`--cues`): keys and Returns, the answer, cuts.
 fn cues(io: std.Io) !void {
@@ -86,7 +86,7 @@ fn cues(io: std.Io) !void {
     };
     try o.print("answer {d:.3}\n", .{answer_to});
     const at = scenes.at;
-    for ([_]f32{ at.term, at.harness, at.bench, at.fixes, at.end }) |cut| try o.print("cut {d:.3}\n", .{cut});
+    for ([_]f32{ at.term, at.harness, at.graff, at.bench, at.fixes, at.end }) |cut| try o.print("cut {d:.3}\n", .{cut});
     try o.flush();
 }
 
