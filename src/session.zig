@@ -219,6 +219,8 @@ pub const Session = struct {
     timeline_top: ?f32 = null,
     sticky: ?*blocks.Block = null,
     sticky_y: f32 = 0,
+    /// How tall its input, floating over the timeline, was in the last frame.
+    composer_h: f32 = 124,
 
     /// A session whose shell starts in `cwd`.
     pub fn create(shared: *Shared, cwd_: []const u8) !*Session {

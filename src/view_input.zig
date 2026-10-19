@@ -20,14 +20,16 @@ const Workspace = @import("workspace.zig").Workspace;
 const menu_rows = 8;
 
 pub fn panel(c: *ui.Context, w: *Workspace, s: *Session, focused: bool) void {
-    const p = ui.div(c).column().wFull().px(16).pt(6).pb(10).gap(7);
+    const p = ui.div(c).column().wFull();
     defer p.end();
-    if (focused and s.menu.open) menu(c, s);
     {
+        const top = ui.div(c).column().wFull().px(16).pt(6).gap(7);
+        defer top.end();
+        if (focused and s.menu.open) menu(c, s);
         // Harness's composer: a rounded pill, the pictures, the text, and
-        // a row of controls with the send button at its end.
-        var pill = ui.div(c).column().wFull().gap(10).px(16).pt(14).pb(10).rounded(26).bg(theme.input).border(theme.border);
-        pill = pill.shadow(.{ .color = .{ .a = if (theme.dark) 0.45 else 0.10 }, .blur = 24, .y = 8 });
+        // a row of controls with the send button at its end, of Liquid
+        // Glass that what scrolls under it shows through.
+        const pill = ui.div(c).column().wFull().gap(10).px(16).pt(14).pb(10).rounded(26).glass(.{}).border(theme.border.alpha(0.6));
         defer pill.end();
         pictures(c, s);
         // The focused pane's input has the keyboard, unless a panel is open.
@@ -56,6 +58,10 @@ pub fn panel(c: *ui.Context, w: *Workspace, s: *Session, focused: bool) void {
         assist.refresh(s);
         actions(c, w, s);
     }
+    // The status line keeps the window's color: small text over output
+    // scrolling by would not read.
+    const line = ui.div(c).column().wFull().px(16).pt(7).pb(10).bg(theme.background);
+    defer line.end();
     status(c, s, focused);
 }
 

@@ -1,5 +1,6 @@
 //! One pane: a session's timeline of blocks and agent turns, and its input
-//! at the bottom, in the manner of Warp's.
+//! at the bottom, in the manner of Warp's: a pane of Liquid Glass floating
+//! over the timeline's end, which scrolls under it.
 const std = @import("std");
 const nanoui = @import("nanoui");
 const ui = nanoui.ui;
@@ -29,8 +30,8 @@ pub fn pane(c: *ui.Context, w: *Workspace, s: *Session, rect: anytype, focused: 
         s.sticky = null;
         const id = timeline(c, s);
         stickyHeader(c, s, id);
-        view_input.panel(c, w, s, focused);
-        jumpToLatest(c, id);
+        composer(c, w, s, focused, rect.w, rect.h);
+        jumpToLatest(c, s, id);
     }
     // Ghostty dims the panes the keys do not go to.
     if (dim and !focused) _ = c.leaf(.{ .absolute = true, .width = .fill, .height = .fill, .background = theme.background.alpha(0.35) }, .none, null);
@@ -57,15 +58,28 @@ fn stickyHeader(c: *ui.Context, s: *Session, id: u64) void {
     } else ui.text(c, view_block.duration(c, b.seconds()), .{ .size = 11, .mono = true, .color = if (b.failed()) theme.failure else theme.muted });
 }
 
+/// The input, over the timeline's bottom: placed by its height in the last
+/// frame, and drawn again at once when that changes (a menu, a picture).
+fn composer(c: *ui.Context, w: *Workspace, s: *Session, focused: bool, width: f32, height: f32) void {
+    ui.key(c, "composer");
+    const box = ui.div(c).column().w(width).absolute().offset(0, height - s.composer_h);
+    defer box.end();
+    view_input.panel(c, w, s, focused);
+    if (c.rects.get(c.node(box.index).id)) |r| if (@abs(r.h - s.composer_h) > 0.5) {
+        s.composer_h = r.h;
+        c.frameIn(0);
+    };
+}
+
 /// Scrolled up from the end while output comes: a pill back to it.
-fn jumpToLatest(c: *ui.Context, id: u64) void {
+fn jumpToLatest(c: *ui.Context, s: *Session, id: u64) void {
     const max = c.scroll_max.get(id) orelse return;
     const at = c.scroll.get(id) orelse return;
     if (max - at < 160) return;
     const box = c.rects.get(id) orelse return;
     const parent = c.rects.get(c.node(c.stack.items[c.stack.items.len - 1]).id) orelse return;
     const pill = ui.div(c).row().gap(6).itemsCenter().px(12).py(6).rounded(14).bg(theme.block_selected).border(theme.border).hover(theme.block_hover).control()
-        .shadow(.{ .color = .{ .a = 0.4 }, .blur = 12, .y = 4 }).absolute().offset(box.x - parent.x + box.w / 2 - 66, box.y - parent.y + box.h - 46);
+        .shadow(.{ .color = .{ .a = 0.4 }, .blur = 12, .y = 4 }).absolute().offset(box.x - parent.x + box.w / 2 - 66, box.y - parent.y + box.h - s.composer_h - 46);
     defer pill.end();
     if (pill.clicked()) {
         // At the end, the timeline follows new output again.
@@ -78,7 +92,8 @@ fn jumpToLatest(c: *ui.Context, id: u64) void {
 
 fn timeline(c: *ui.Context, s: *Session) u64 {
     // Its text selects with a drag and copies (⌘C), as a terminal's.
-    const box = c.open(.{ .direction = .column, .width = .fill, .grow = 1, .scroll = true, .follow_end = true, .selectable = true, .padding = .{ .top = 4, .bottom = 12 } }, null);
+    // Room at the end for the input floating over it.
+    const box = c.open(.{ .direction = .column, .width = .fill, .grow = 1, .scroll = true, .follow_end = true, .selectable = true, .padding = .{ .top = 4, .bottom = 12 + s.composer_h } }, null);
     defer c.end();
     const id = c.node(box).id;
     s.timeline_top = if (c.rects.get(id)) |r| r.y else null;
