@@ -85,6 +85,9 @@ pub const Turn = struct {
     title: ?[]u8 = null,
     agent: Which,
     items: std.ArrayList(Item) = .empty,
+    /// Sent to the agent (not waiting for its session); `done` when the
+    /// agent answered the prompt.
+    sent: bool = false,
     done: bool = false,
     started: f64,
     ended: f64 = 0,
@@ -310,6 +313,7 @@ pub const Agent = struct {
 
     fn send(a: *Agent, text: []const u8, images: []const Image) void {
         a.status = .working;
+        if (a.current()) |t| t.sent = true;
         var parts: std.ArrayList(Part) = .empty;
         defer parts.deinit(a.gpa);
         parts.append(a.gpa, .{ .text = text }) catch return;
@@ -346,16 +350,24 @@ pub const Agent = struct {
         }
     };
 
+    /// The oldest prompt the agent hasn't answered: answers come in the
+    /// order prompts went, and one may come late, after the next prompt
+    /// was sent, so it isn't always the newest turn's.
+    fn unanswered(a: *Agent) ?*Turn {
+        for (a.turns.items) |t| if (t.sent and !t.done) return t;
+        return null;
+    }
+
     fn onPromptDone(ctx: *anyopaque, result: ?std.json.Value, err: ?[]const u8, _: std.mem.Allocator) void {
         const a: *Agent = @ptrCast(@alignCast(ctx));
-        const t = a.current() orelse return;
+        const t = a.unanswered() orelse return;
         if (err) |e| a.addItem(t, .{ .note = std.fmt.allocPrint(a.gpa, "error: {s}", .{e}) catch return });
         if (acp.str(result orelse .null, "stopReason")) |r| {
             if (std.mem.eql(u8, r, "cancelled")) a.addItem(t, .{ .note = a.gpa.dupe(u8, "cancelled") catch return });
         }
         t.done = true;
         t.ended = blocks.now();
-        if (a.status == .working) a.status = .ready;
+        if (a.status == .working and a.unanswered() == null) a.status = .ready;
         if (a.app.finished) |f| f(a.app.ctx, t);
         a.app.changed(a.app.ctx);
     }

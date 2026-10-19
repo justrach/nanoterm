@@ -124,3 +124,75 @@ test "Jev decides what the rules could not, from its answer" {
     bad.ask("something else entirely");
     try std.testing.expectEqual(@as(usize, 1), bad.calls);
 }
+
+/// Answers a prompt only once the next one comes, as graff 0.302 does when
+/// its last line sits unflushed: the first answer arrives after the
+/// second prompt was sent.
+const lagging_agent =
+    \\import json, sys
+    \\def send(m): sys.stdout.write(json.dumps(m) + "\n"); sys.stdout.flush()
+    \\def chunk(t): send({"jsonrpc": "2.0", "method": "session/update", "params": {"sessionId": "s1", "update": {"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": t}}}})
+    \\waiting = None
+    \\for line in sys.stdin:
+    \\    m = json.loads(line)
+    \\    method = m.get("method")
+    \\    if method == "initialize":
+    \\        send({"jsonrpc": "2.0", "id": m["id"], "result": {"protocolVersion": 1}})
+    \\    elif method == "session/new":
+    \\        send({"jsonrpc": "2.0", "id": m["id"], "result": {"sessionId": "s1"}})
+    \\    elif method == "session/prompt":
+    \\        if waiting is None:
+    \\            chunk("one")
+    \\            waiting = m["id"]
+    \\        else:
+    \\            send({"jsonrpc": "2.0", "id": waiting, "result": {"stopReason": "end_turn"}})
+    \\            chunk("two")
+    \\            send({"jsonrpc": "2.0", "id": m["id"], "result": {"stopReason": "end_turn"}})
+    \\
+;
+
+fn turnText(t: *agent_mod.Turn) []const u8 {
+    for (t.items.items) |it| switch (it) {
+        .text => |l| return l.items,
+        else => {},
+    };
+    return "";
+}
+
+test "a late answer ends its own turn, not the one sent after it" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+    var arena_state: std.heap.ArenaAllocator = .init(gpa);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const dir = "/tmp/nanoterm-test-lag";
+    std.Io.Dir.cwd().deleteTree(io, dir) catch {};
+    try std.Io.Dir.cwd().createDirPath(io, dir);
+    try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = dir ++ "/agent.py", .data = lagging_agent });
+    var host: u8 = 0;
+    const a = try agent_mod.Agent.create(gpa, io, .{ .ctx = &host, .changed = Host.changed, .newBlock = Host.newBlock }, .claude, dir);
+    defer a.destroy();
+    try a.start(try proc.cStrings(arena, &.{ "/usr/bin/python3", "-I", dir ++ "/agent.py" }), try proc.cStrings(arena, &.{"PATH=/usr/bin:/bin"}));
+    try pumpUntil(a, struct {
+        fn f(x: *agent_mod.Agent) bool {
+            return x.status == .ready;
+        }
+    }.f);
+    try a.promptWith(null, "first", &.{});
+    try pumpUntil(a, struct {
+        fn f(x: *agent_mod.Agent) bool {
+            return turnText(x.turns.items[0]).len > 0;
+        }
+    }.f);
+    try std.testing.expect(!a.turns.items[0].done);
+    try a.promptWith(null, "second", &.{});
+    try pumpUntil(a, struct {
+        fn f(x: *agent_mod.Agent) bool {
+            return x.turns.items.len == 2 and x.turns.items[1].done;
+        }
+    }.f);
+    try std.testing.expect(a.turns.items[0].done);
+    try std.testing.expectEqualStrings("one", turnText(a.turns.items[0]));
+    try std.testing.expectEqualStrings("two", turnText(a.turns.items[1]));
+    try std.testing.expectEqual(agent_mod.Status.ready, a.status);
+}
