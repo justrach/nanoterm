@@ -106,6 +106,8 @@ pub fn agentList(c: *ui.Context, w: *Workspace) void {
     }
     if (!prefs.agents) return;
     for (agents.all, 0..) |info, i| {
+        // Under graff (installed): the sign-ins it can bring.
+        if (i > 0 and agents.all[i - 1].which == .graff and prefs.installed.get(.graff)) @import("view_signins.zig").list(c, w, runInTab);
         ui.key(c, c.print("agent-{d}", .{i}));
         _ = c.leaf(.{ .width = .fill, .height = .{ .px = 1 }, .background = theme.border }, .none, null);
         const r = ui.div(c).row().wFull().gap(10).itemsCenter();
@@ -144,7 +146,7 @@ pub fn agentList(c: *ui.Context, w: *Workspace) void {
 }
 
 /// Runs `command` in a new tab (an installer, a sign-in), and closes Settings.
-fn runInTab(w: *Workspace, command: []const u8) void {
+pub fn runInTab(w: *Workspace, command: []const u8) void {
     const s = w.newTab(w.shared.home) catch return;
     s.run(command);
     w.closeOverlay();

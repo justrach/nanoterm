@@ -159,6 +159,9 @@ test "the Settings page: account, agents, appearance, updates" {
     try std.testing.expect(t.hasText("Sign in with Codegraff"));
     try std.testing.expect(t.hasText("Codex") and t.hasText("opencode") and t.hasText("Hermes"));
     try std.testing.expect(t.hasText("Default"));
+    // graff installed: the sign-ins it brings, under it.
+    try std.testing.expect(t.hasText("Bring your own sign-ins"));
+    try std.testing.expect(t.hasText("Sign in with ChatGPT") and t.hasText("Sign in with xAI") and t.hasText("Sign in with Kimi") and t.hasText("Sign in with Z.ai"));
     try std.testing.expect(t.containsText("doesn't update itself"));
     try t.screenshot("/tmp/nanoterm-settings.png");
 }
