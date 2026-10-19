@@ -115,10 +115,45 @@ fn keysStep(c: *ui.Context, w: *Workspace) void {
     if (choice(c, "ob-keys-std", "keyboard", "Standard", "The Mac's text editing: arrows, ⌥ for words, ⌘ for the line.", false, p.keys == .system)) p.setKeys(.system);
     if (choice(c, "ob-keys-emacs", "command", "Emacs", "^A ^E ^K ^Y with a kill ring and M-y, ^T M-t, M-u M-l M-c, the mark, ^/ undo, ^P ^N history.", false, p.keys == .emacs)) p.setKeys(.emacs);
     if (choice(c, "ob-keys-vim", "character.cursor.ibeam", "Vim", "Esc for normal mode: motions with counts, d c y with text objects (ciw, di\"), visual mode, u and ^R; j k through history.", false, p.keys == .vim)) p.setKeys(.vim);
+    if (p.keys != .system) howTo(c, p.keys);
     const f = footer(c);
     defer f.end();
     if (ui.button(c, "Back", .{ .variant = .ghost, .size = 13 }).clicked) w.onboarding = .start;
     if (ui.button(c, "Continue", .{ .variant = .primary, .size = 13 }).clicked) w.onboarding = .analytics;
+}
+
+/// With Emacs's or Vim's keys: how to go into a command's output, and how
+/// to type to a program that reads (cat, a REPL), as the pager and the
+/// program's input have them.
+fn howTo(c: *ui.Context, keys: ui.Keymap) void {
+    const b = ui.div(c).column().wFull().gap(10).p(14).rounded(12).bg(theme.accent.alpha(0.06)).border(theme.accent.alpha(0.3));
+    defer b.end();
+    ui.text(c, if (keys == .vim) "Using Vim's keys" else "Using Emacs's keys", .{ .size = 13, .weight = .semibold });
+    if (keys == .vim) {
+        tip(c, "Esc  k", "Go into the output of the command above, as in a read-only Vim.");
+        tip(c, "h j k l  /  v  y", "Move around it, search, select and copy. q or Esc comes back to the input.");
+        tip(c, "cat", "While a program reads what you type, the input is its line: edit it with Vim's keys, Return sends it, ^D ends it.");
+    } else {
+        tip(c, "M-v", "Go into the output of the command above (⌥V).");
+        tip(c, "C-n C-p  C-s  M-w", "Move around it, search, set the mark with C-SPC and copy. C-g comes back to the input.");
+        tip(c, "cat", "While a program reads what you type, the input is its line: edit it with Emacs's keys (^A ^E ^K ^W), Return sends it, ^D ends it.");
+    }
+}
+
+fn tip(c: *ui.Context, keys: []const u8, what: []const u8) void {
+    const r = ui.div(c).row().wFull().gap(10);
+    defer r.end();
+    {
+        // The keys in a column of their own, so the words line up.
+        const col = ui.div(c).w(150);
+        defer col.end();
+        const k = ui.div(c).px(7).py(2).rounded(5).bg(theme.background).border(theme.border);
+        defer k.end();
+        ui.text(c, keys, .{ .size = 11.5, .mono = true, .weight = .semibold });
+    }
+    const t = ui.div(c).column().grow();
+    defer t.end();
+    ui.text(c, what, .{ .size = 12, .color = theme.muted, .wrap = true });
 }
 
 fn analyticsStep(c: *ui.Context, w: *Workspace) void {

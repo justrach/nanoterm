@@ -79,7 +79,15 @@ test "onboarding: how to start, the input's keys, analytics asked; the answers k
     try t.clickText("Vim");
     t.settle(0.5);
     try std.testing.expectEqual(ui.Keymap.vim, p.keys);
+    // How to use them: into a command's output, and typing to cat.
+    try std.testing.expect(t.hasText("Using Vim's keys") and t.hasText("Esc  k") and t.hasText("cat"));
     try t.screenshot("/tmp/nanoterm-onboarding/3-keys.png");
+    try t.clickText("Emacs");
+    t.settle(0.5);
+    try std.testing.expect(t.hasText("Using Emacs's keys") and t.hasText("M-v"));
+    try t.screenshot("/tmp/nanoterm-onboarding/3-keys-emacs.png");
+    try t.clickText("Vim");
+    t.settle(0.5);
     try t.clickText("Continue");
     t.settle(0.5);
     try std.testing.expect(t.hasText("Help make nanoterm better") and t.hasText("Privacy Policy"));

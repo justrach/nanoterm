@@ -39,11 +39,11 @@ pub fn panel(c: *ui.Context, w: *Workspace, s: *Session, focused: bool) void {
         const in_pager = if (pager.open) |pg| pg.session == s else false;
         if (focused and w.overlay == .none and !w.finding and !in_pager) c.focus = s.input_id;
         const placeholder = if (s.shell.remoteReady())
-            c.print("Run on {s}, or ask {s} — it works there too", .{ s.shell.remote.?.host, s.which.label() })
+            c.print("Run a command on {s}, or ask {s}, which works there too", .{ s.shell.remote.?.host, s.which.label() })
         else if (s.shell.busy())
             "Input for the running command"
         else if (s.lock == .agent)
-            c.print("Ask {s} — it can read, edit and run commands here", .{s.which.label()})
+            c.print("Ask {s} anything. It can read, edit and run commands here", .{s.which.label()})
         else if (s.lock == .terminal)
             "Run a command"
         else

@@ -43,6 +43,7 @@ test {
     _ = @import("graff_logins.zig");
     _ = @import("tests_graff_logins.zig");
     _ = @import("tests_multiline.zig");
+    _ = @import("agent_prompt.zig");
     _ = @import("analytics.zig");
     _ = @import("tests_screen.zig");
     _ = @import("split.zig");

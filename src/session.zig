@@ -246,7 +246,7 @@ pub const Session = struct {
             .home = shared.home,
             .shell = .init(gpa, .{ .ctx = a, .changed = changed, .exited = shellExited }),
             .menu = .init(gpa),
-            .attachments = .{ .gpa = gpa },
+            .attachments = .{ .gpa = gpa, .uploads = std.fs.path.join(shared.arena, &.{ shared.home, "Library", "Application Support", "nanoterm", "uploads" }) catch "" },
             .which = shared.prefs.agent,
         };
         shared.next_session += 1;

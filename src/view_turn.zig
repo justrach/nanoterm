@@ -32,6 +32,12 @@ pub fn turn(c: *ui.Context, app: *App, t: *agent_mod.Turn) void {
         const q = ui.div(c).column().grow().pt(2);
         defer q.end();
         ui.text(c, t.title orelse t.prompt, .{ .size = 14.5, .weight = .semibold, .wrap = true, .leading = 1.35 });
+        // The pictures that went with it.
+        if (t.images.len > 0) {
+            const pics = ui.div(c).row().gap(8).pt(8);
+            defer pics.end();
+            for (t.images) |im| _ = ui.image(c, .{ .key = c.print("turn-pic-{s}-{d}", .{ im.name, im.data.len }), .bytes = im.data, .max_width = 160, .max_height = 120, .radius = 8 });
+        }
     }
     {
         // …and the agent answered.

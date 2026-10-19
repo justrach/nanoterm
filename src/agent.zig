@@ -8,6 +8,7 @@ const blocks = @import("blocks.zig");
 const host = @import("agent_host.zig");
 const agent_config = @import("agent_config.zig");
 const visual = @import("visual.zig");
+const prompt_mod = @import("agent_prompt.zig");
 
 /// The agents nanoterm talks to over ACP, as Harness ships them
 /// (`agents.zig` says how to find and install each).
@@ -82,10 +83,13 @@ pub const Image = struct {
     /// "image/png", "image/jpeg", …: static.
     mime: []const u8,
     data: []u8,
+    /// The file it is (a pasted one, saved to the uploads); empty if none.
+    path: []u8 = &.{},
 
     pub fn free(im: Image, gpa: std.mem.Allocator) void {
         gpa.free(im.name);
         gpa.free(im.data);
+        gpa.free(im.path);
     }
 };
 
@@ -240,7 +244,7 @@ pub const Agent = struct {
         // The agent's own last words say most: add them.
         const said = a.client.stderr.lastLine();
         a.error_text = if (said.len > 0)
-            std.fmt.allocPrint(a.gpa, fmt ++ " — {s}", args ++ .{said}) catch null
+            std.fmt.allocPrint(a.gpa, fmt ++ ": {s}", args ++ .{said}) catch null
         else
             std.fmt.allocPrint(a.gpa, fmt, args) catch null;
         if (a.turns.items.len > 0) {
@@ -326,41 +330,15 @@ pub const Agent = struct {
     fn send(a: *Agent, text: []const u8, images: []const Image) void {
         a.status = .working;
         if (a.current()) |t| t.sent = true;
-        var parts: std.ArrayList(Part) = .empty;
-        defer parts.deinit(a.gpa);
-        parts.append(a.gpa, .{ .text = text }) catch return;
-        if (images.len > 0 and !a.images_ok) {
-            if (a.current()) |t| a.addItem(t, .{ .note = std.fmt.allocPrint(a.gpa, "{s} does not take images: the text went alone", .{a.which.label()}) catch return });
-        } else for (images) |*im| parts.append(a.gpa, .{ .image = im }) catch return;
-        a.client.request("session/prompt", .{ .sessionId = a.session.?, .prompt = parts.items }, a, onPromptDone) catch {};
+        var arena: std.heap.ArenaAllocator = .init(a.gpa);
+        defer arena.deinit();
+        const parts = prompt_mod.parts(arena.allocator(), text, images, a.images_ok) catch return;
+        // Neither inline nor a file: the agent can't have it.
+        var lost: usize = 0;
+        for (images) |im| lost += @intFromBool(im.path.len == 0 and !(a.images_ok and im.data.len <= prompt_mod.max_inline_bytes));
+        if (lost > 0) if (a.current()) |t| a.addItem(t, .{ .note = std.fmt.allocPrint(a.gpa, "{d} picture(s) could not be sent to {s}", .{ lost, a.which.label() }) catch return });
+        a.client.request("session/prompt", .{ .sessionId = a.session.?, .prompt = parts }, a, onPromptDone) catch {};
     }
-
-    /// A content block of a prompt: text, or an image in base64.
-    const Part = struct {
-        text: []const u8 = "",
-        image: ?*const Image = null,
-
-        pub fn jsonStringify(p: Part, jw: anytype) !void {
-            try jw.beginObject();
-            try jw.objectField("type");
-            if (p.image) |im| {
-                try jw.write("image");
-                try jw.objectField("mimeType");
-                try jw.write(im.mime);
-                try jw.objectField("data");
-                try jw.beginWriteRaw();
-                try jw.writer.writeByte('"');
-                try std.base64.standard.Encoder.encodeWriter(jw.writer, im.data);
-                try jw.writer.writeByte('"');
-                jw.endWriteRaw();
-            } else {
-                try jw.write("text");
-                try jw.objectField("text");
-                try jw.write(p.text);
-            }
-            try jw.endObject();
-        }
-    };
 
     /// The oldest prompt the agent hasn't answered: answers come in the
     /// order prompts went, and one may come late, after the next prompt

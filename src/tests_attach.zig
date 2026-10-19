@@ -69,7 +69,7 @@ test "cat of a Markdown file is drawn as Markdown; pictures wait as chips" {
 
     // Pictures: a chip each, sent to the agent, ✕ leaves one out.
     try std.testing.expect(s.attachments.addPath(io, home ++ "/shot.png"));
-    try std.testing.expect(s.attachments.addPasted(png));
+    try std.testing.expect(s.attachments.addPasted(io, png));
     try std.testing.expect(!s.attachments.addPath(io, home ++ "/missing.png"));
     t.settle(1);
     try std.testing.expect(t.hasText("shot.png"));
@@ -94,7 +94,7 @@ const fake_agent =
     \\    elif method == "session/new":
     \\        send({"jsonrpc": "2.0", "id": m["id"], "result": {"sessionId": "s1"}})
     \\    elif method == "session/prompt":
-    \\        got = " ".join(p["type"] + (":" + p["mimeType"] + ":" + p["data"] if p["type"] == "image" else ":" + p["text"]) for p in m["params"]["prompt"])
+    \\        got = " ".join(p["type"] + (":" + p["mimeType"] + ":" + p["data"] + ":" + p.get("uri", "") if p["type"] == "image" else ":" + p["text"]) for p in m["params"]["prompt"])
     \\        send({"jsonrpc": "2.0", "method": "session/update", "params": {"sessionId": "s1", "update": {
     \\            "sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": got}}}})
     \\        send({"jsonrpc": "2.0", "id": m["id"], "result": {"stopReason": "end_turn"}})
@@ -125,7 +125,8 @@ test "pictures go to the agent as image blocks" {
     // Sent before the session opens: it waits, pictures and all.
     var tray: @import("attach.zig").Tray = .{ .gpa = gpa };
     defer tray.deinit();
-    try std.testing.expect(tray.add("a.png", png));
+    try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = dir ++ "/a.png", .data = png });
+    try std.testing.expect(tray.addPath(io, dir ++ "/a.png"));
     try a.promptWith(null, "what is this?", tray.take());
     var waited: f64 = 0;
     while (a.current().?.done == false) : (waited += 0.02) {
@@ -136,6 +137,7 @@ test "pictures go to the agent as image blocks" {
     const items = a.current().?.items.items;
     try std.testing.expect(items.len > 0 and items[0] == .text);
     var b64: [64]u8 = undefined;
-    const want = try std.fmt.allocPrint(arena, "text:what is this? image:image/png:{s}", .{std.base64.standard.Encoder.encode(&b64, png)});
+    // Inline with its file's uri, and no trailer: it all went inline.
+    const want = try std.fmt.allocPrint(arena, "text:what is this? image:image/png:{s}:file://" ++ dir ++ "/a.png", .{std.base64.standard.Encoder.encode(&b64, png)});
     try std.testing.expectEqualStrings(want, items[0].text.items);
 }
