@@ -22,6 +22,7 @@ pub fn overlay(c: *ui.Context, w: *Workspace) void {
     defer scrim.end();
     if (scrim.clicked()) return w.closeOverlay();
     if (w.overlay == .palette) return @import("view_palette.zig").card(c, w);
+    if (w.overlay == .settings) return @import("view_settings.zig").card(c, w);
     const card = ui.div(c).column().w(@min(620, c.size.w - 40)).p(8).gap(6).bg(theme.panel).rounded(12).border(theme.border).shadowLg();
     defer card.end();
     // Clicks inside the card stay in it.
@@ -29,7 +30,7 @@ pub fn overlay(c: *ui.Context, w: *Workspace) void {
     switch (w.overlay) {
         .palette => {},
         .models => modelsView(c, w),
-        .none => {},
+        .none, .settings => {},
     }
 }
 
@@ -77,10 +78,20 @@ fn modelsView(c: *ui.Context, w: *Workspace) void {
         const r = ui.div(c).row().wFull().gap(10).itemsCenter().px(4).py(2);
         defer r.end();
         ui.text(c, "Agent", .{ .size = 12, .weight = .semibold, .color = theme.muted });
-        const names = [_][]const u8{ agent_mod.Which.graff.label(), agent_mod.Which.claude.label() };
-        var selected: usize = @intFromEnum(s.which);
-        if (ui.segmented(c, &names, &selected)) {
-            s.choose(@enumFromInt(selected));
+        // The agents installed (and the one in use), as Settings found them.
+        var shown: [std.enums.values(agent_mod.Which).len]agent_mod.Which = undefined;
+        var names: [shown.len][]const u8 = undefined;
+        var n: usize = 0;
+        var selected: usize = 0;
+        for (std.enums.values(agent_mod.Which)) |which| {
+            if (which != s.which and which != .graff and which != .claude and !w.shared.prefs.installed.get(which)) continue;
+            if (which == s.which) selected = n;
+            shown[n] = which;
+            names[n] = which.label();
+            n += 1;
+        }
+        if (ui.segmented(c, names[0..n], &selected)) {
+            s.choose(shown[selected]);
             assist.prepareModels(s);
             w.pick = 0;
         }

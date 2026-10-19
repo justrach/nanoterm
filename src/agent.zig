@@ -9,14 +9,26 @@ const host = @import("agent_host.zig");
 const agent_config = @import("agent_config.zig");
 const visual = @import("visual.zig");
 
+/// The agents nanoterm talks to over ACP, as Harness ships them
+/// (`agents.zig` says how to find and install each).
 pub const Which = enum {
     graff,
     claude,
+    codex,
+    opencode,
+    grok,
+    devin,
+    hermes,
 
     pub fn label(w: Which) []const u8 {
         return switch (w) {
             .graff => "graff",
             .claude => "Claude Code",
+            .codex => "Codex",
+            .opencode => "opencode",
+            .grok => "Grok",
+            .devin => "Devin",
+            .hermes => "Hermes",
         };
     }
 };

@@ -199,11 +199,17 @@ test "a ready update shows in the title bar; one that can't install keeps nanote
     u.version_len = 5;
     u.phase.store(.ready, .release);
     t.settle(1);
-    try std.testing.expect(t.hasText("Restart to update to 9.9.9"));
-    // Nothing is staged here, so it can't install, and nothing quits
-    // (quitting would reach the undefined app).
-    const r = t.findText("Restart to update to 9.9.9").?;
-    t.click(r.x + 4, r.y + r.h / 2);
+    // A card floats in asking to restart; nothing is staged here, so it
+    // can't install, and nothing quits (quitting would reach the undefined app).
+    t.settle(1);
+    try std.testing.expect(t.hasText("nanoterm 9.9.9 is ready"));
+    try t.screenshot("/tmp/nanoterm-update-card.png");
+    try t.clickText("Restart now");
     t.settle(1);
     try std.testing.expectEqual(nanoui.update.Phase.ready, u.phase.load(.acquire));
+    // "Later" puts it away; the title bar keeps a button.
+    try t.clickText("Later");
+    t.settle(1);
+    try std.testing.expect(!t.hasText("nanoterm 9.9.9 is ready"));
+    try std.testing.expect(t.hasText("Restart to update to 9.9.9"));
 }

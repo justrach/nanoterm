@@ -13,7 +13,7 @@ const Shared = session_mod.Shared;
 pub const Tree = split.Tree(*Session);
 
 /// A panel over the panes: the command palette, the model picker.
-pub const Overlay = enum { none, palette, models };
+pub const Overlay = enum { none, palette, models, settings };
 pub const Node = Tree.Node;
 
 pub const Tab = struct {
@@ -33,8 +33,11 @@ const resize_step = 0.05;
 pub const Workspace = struct {
     shared: *Shared,
     nanoapp: *nanoui.App,
-    /// Updates from the releases (none in tests).
+    /// Updates from the releases (none in tests), and the version put off
+    /// with "Later".
     updater: ?*nanoui.Updater = null,
+    update_later: [32]u8 = undefined,
+    update_later_len: usize = 0,
     tabs: std.ArrayList(*Tab) = .empty,
     active: usize = 0,
     /// Where the panes of the active tab were laid out in the last frame.
@@ -85,9 +88,16 @@ pub const Workspace = struct {
     /// The model picker; it starts the pane's agent to learn its models.
     pub fn openModels(w: *Workspace) void {
         w.overlay = if (w.overlay == .models) .none else .models;
+        if (w.overlay == .models) w.shared.prefs.refresh(w.shared.env);
         w.query.clear();
         w.pick = 0;
         if (w.overlay == .models) @import("assist.zig").prepareModels(w.focused());
+    }
+
+    /// Settings (⌘,): the agents are looked for again as it opens.
+    pub fn openSettings(w: *Workspace) void {
+        w.overlay = if (w.overlay == .settings) .none else .settings;
+        if (w.overlay == .settings) w.shared.prefs.refresh(w.shared.env);
     }
 
     pub fn closeOverlay(w: *Workspace) void {

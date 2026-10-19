@@ -94,19 +94,35 @@ fn rich(c: *ui.Context, in: md.Inline, style: ui.TextStyle) void {
     }
 }
 
+/// A picture on the web: drawn at a pixel a point, as browsers draw it.
+fn web(src: []const u8) bool {
+    return std.mem.startsWith(u8, src, "https://") or std.mem.startsWith(u8, src, "http://");
+}
+
+/// A picture's size in points, from a PNG's header (else a guess), for
+/// laying pictures out in rows.
+fn sizeOf(im: md.Image, bytes: []const u8) f32 {
+    const scale: f32 = if (web(im.src)) 1 else 2;
+    var w: f32 = if (web(im.src)) 120 else 560;
+    if (bytes.len >= 24 and std.mem.eql(u8, bytes[1..4], "PNG")) w = @as(f32, @floatFromInt(std.mem.readInt(u32, bytes[16..20], .big))) / scale;
+    return @min(w, im.width orelse 560);
+}
+
 /// A picture, framed (a click opens it), with its alt text as a caption
 /// when Markdown gave it (HTML's alt text describes, it isn't shown).
 fn figure(c: *ui.Context, im: md.Image, bytes: []const u8, alt: []const u8, style: ui.TextStyle, caption: bool) void {
     const fig = ui.div(c).column().gap(6);
     defer fig.end();
     {
-        const frame = ui.div(c).column().p(1).rounded(11).border(theme.border).bg(theme.panel);
+        // A badge from the web is drawn bare; a screenshot in a frame.
+    var frame = ui.div(c).column();
+    if (!web(im.src)) frame = frame.p(1).rounded(11).border(theme.border).bg(theme.panel);
         defer frame.end();
         if (frame.clicked()) {
             var buf: [4096]u8 = undefined;
             if (@import("pictures.zig").resolve(&buf, pictures.?.home, im.src)) |path| _ = nanoui.shell.openPath(path);
         }
-        if (!ui.image(c, .{ .key = im.src, .bytes = bytes, .max_width = im.width orelse 560, .max_height = 420, .radius = 10 })) ui.text(c, alt, style);
+        if (!ui.image(c, .{ .key = im.src, .bytes = bytes, .max_width = im.width orelse 560, .max_height = 420, .radius = if (web(im.src)) 0 else 10, .scale = if (web(im.src)) 1 else 2 })) ui.text(c, alt, style);
     }
     if (caption and alt.len > 0) ui.text(c, alt, .{ .size = 12, .color = theme.muted });
 }
@@ -129,7 +145,7 @@ fn figures(c: *ui.Context, in: md.Inline, style: ui.TextStyle) void {
             const alt = in.text[im.start..im.end];
             ui.key(c, c.print("fig-{d}", .{i}));
             if (picture(c, im.src)) |bytes| {
-                const w = im.width orelse 560;
+                const w = sizeOf(im, bytes);
                 if (used > 0 and used + w > room) break;
                 figure(c, im, bytes, alt, style, im.width == null and !in.center);
                 used += w + 6;

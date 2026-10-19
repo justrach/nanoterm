@@ -62,6 +62,14 @@ pub const Jev = struct {
         j.reply.deinit(j.gpa);
     }
 
+    /// The Codegraff key changed (signed in or out in Settings).
+    pub fn setKey(ctx: *anyopaque, key: ?[]const u8) void {
+        const j: *Jev = @ptrCast(@alignCast(ctx));
+        if (j.key) |k| j.gpa.free(k);
+        j.key = if (key) |k| j.gpa.dupe(u8, k) catch null else null;
+        j.down = false;
+    }
+
     pub fn available(j: *const Jev) bool {
         return j.key != null and !j.down;
     }

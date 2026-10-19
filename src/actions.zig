@@ -124,6 +124,10 @@ pub const Actions = struct {
         a.w.focused().lock = null;
         a.done();
     }
+    fn settings(a: *Actions, _: *Item) void {
+        a.w.openSettings();
+        a.done();
+    }
     fn graff(a: *Actions, _: *Item) void {
         a.w.focused().choose(.graff);
         a.done();
@@ -140,7 +144,17 @@ pub fn install(app: *nanoui.App, acts: *Actions) !void {
     const of = nanoui.MenuClick.of;
     const A = Actions;
     try app.setMenu(&.{
-        .{ .role = .app_menu },
+        .{ .label = "nanoterm", .submenu = &.{
+            .{ .role = .about },
+            .separator,
+            .{ .label = "Settings…", .accelerator = binds.accel("Cmd+,"), .click = of(acts, A.settings) },
+            .separator,
+            .{ .role = .hide },
+            .{ .role = .hide_others },
+            .{ .role = .unhide },
+            .separator,
+            .{ .role = .quit },
+        } },
         .{ .label = "Shell", .submenu = &.{
             .{ .label = "New Tab", .accelerator = binds.accel("Cmd+T"), .click = of(acts, A.newTab) },
             .{ .label = "Split Right", .accelerator = binds.accel("Cmd+D"), .click = of(acts, A.splitRight) },

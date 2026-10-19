@@ -23,6 +23,12 @@ fn S(comptime f: fn (*Workspace) void) *const fn (*Workspace) void {
 }
 
 pub const actions = [_]Action{
+    .{ .label = "Settings", .also = "preferences sign in codegraff account agents install update", .keys = binds.label("Cmd+,"), .icon = "gearshape", .run = S(struct {
+        fn f(w: *Workspace) void {
+            w.closeOverlay();
+            w.openSettings();
+        }
+    }.f) },
     .{ .label = "Choose agent and model", .keys = binds.label("Cmd+Shift+M"), .icon = "cpu", .run = S(struct {
         fn f(w: *Workspace) void {
             w.openModels();

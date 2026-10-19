@@ -49,7 +49,10 @@ pub fn view(w: *Workspace, c: *ui.Context) void {
         node(w, c, t.tree.root, area, several);
     }
     view_find.bar(c, w, title_height);
+    @import("view_update.zig").card(c, w, title_height);
     view_overlay.overlay(c, w);
+    // The text size is kept for the next launch.
+    w.shared.prefs.setZoom(w.zoom);
 }
 
 /// A press in a pane focuses it, before anything in it handles the press.
@@ -219,7 +222,10 @@ fn titleBar(w: *Workspace, c: *ui.Context) void {
     }
     ui.spacer(c);
     if (s.agent) |ag| statusDot(c, ag.status);
-    if (w.updater) |u| if (u.ready()) |version| update(w, c, u, version);
+    if (w.updater) |u| if (u.ready()) |version| if (!@import("view_update.zig").showing(w)) update(w, c, u, version);
+    // Settings, for those who reach for the mouse.
+    ui.key(c, "settings-button");
+    if (ui.button(c, "", .{ .variant = .ghost, .size = 11, .icon = "gearshape" }).clicked) w.openSettings();
     // The palette, for those who reach for the mouse.
     ui.key(c, "palette-button");
     const b = ui.div(c).row().gap(6).itemsCenter().px(10).py(4).rounded(7).border(theme.border).hover(theme.block_hover);

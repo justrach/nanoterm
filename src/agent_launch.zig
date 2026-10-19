@@ -2,12 +2,30 @@
 const std = @import("std");
 const agent_mod = @import("agent.zig");
 const proc = @import("proc.zig");
+const agents = @import("agents.zig");
 
-/// How to start each agent in ACP mode, as Harness does: `graff acp`, and
-/// Claude Code through its ACP adapter (Zed's install, else npx).
+/// Whether `which`'s CLI is installed (on PATH or where installers put it).
+pub fn installed(arena: std.mem.Allocator, io: std.Io, env: *std.process.Environ.Map, which: agent_mod.Which) bool {
+    const path = agents.searchPath(arena, env.get("PATH") orelse "", env.get("HOME") orelse "/");
+    return proc.which(arena, io, path, agents.info(which).cli) != null;
+}
+
+/// How to start each agent in ACP mode, as Harness does: `graff acp`,
+/// Claude Code and Codex through their ACP adapters, the others' own ACP
+/// commands. Agents are looked for on PATH and where installers put them.
 pub fn argv(arena: std.mem.Allocator, io: std.Io, env: *std.process.Environ.Map, which: agent_mod.Which, model: ?[]const u8) ![*:null]const ?[*:0]const u8 {
-    const path = env.get("PATH") orelse "";
+    const path = agents.searchPath(arena, env.get("PATH") orelse "", env.get("HOME") orelse "/");
     switch (which) {
+        .codex => {
+            if (proc.which(arena, io, path, "codex-acp")) |bin| return proc.cStrings(arena, &.{bin});
+            if (proc.which(arena, io, path, "codex") == null) return error.NotInstalled;
+            const npx = proc.which(arena, io, path, "npx") orelse return error.NotInstalled;
+            return proc.cStrings(arena, &.{ npx, "-y", "@agentclientprotocol/codex-acp@1.1.14" });
+        },
+        .opencode => return proc.cStrings(arena, &.{ proc.which(arena, io, path, "opencode") orelse return error.NotInstalled, "acp" }),
+        .grok => return proc.cStrings(arena, &.{ proc.which(arena, io, path, "grok") orelse return error.NotInstalled, "--no-auto-update", "agent", "--no-leader", "stdio" }),
+        .devin => return proc.cStrings(arena, &.{ proc.which(arena, io, path, "devin") orelse return error.NotInstalled, "acp" }),
+        .hermes => return proc.cStrings(arena, &.{ proc.which(arena, io, path, "hermes") orelse return error.NotInstalled, "acp" }),
         .graff => {
             const graff = proc.which(arena, io, path, "graff") orelse return error.NotInstalled;
             if (model) |m| return proc.cStrings(arena, &.{ graff, "acp", "--yolo", "--model", m });

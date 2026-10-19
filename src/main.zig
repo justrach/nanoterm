@@ -36,7 +36,7 @@ pub fn main(init: std.process.Init) !void {
     var shared = try session_mod.Shared.init(init.gpa, init.io, init.arena.allocator(), init.environ_map);
     shared.wire();
     defer shared.deinit();
-    var w: Workspace = .{ .shared = &shared, .nanoapp = app };
+    var w: Workspace = .{ .shared = &shared, .nanoapp = app, .zoom = shared.prefs.zoom };
     defer w.deinit();
     var acts: actions.Actions = .{ .w = &w };
     try actions.install(app, &acts);

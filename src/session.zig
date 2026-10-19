@@ -67,6 +67,8 @@ pub const Shared = struct {
     appearance_path: []const u8 = "",
     /// The hosts of ~/.ssh/config, for the palette.
     ssh_hosts: []const []const u8 = &.{},
+    /// Settings (⌘,): the default agent, text size, Codegraff account.
+    prefs: @import("settings.zig").Prefs,
 
     /// Call `wire` once the value is at its final address.
     pub fn init(gpa: std.mem.Allocator, io: std.Io, arena: std.mem.Allocator, env: *std.process.Environ.Map) !Shared {
@@ -88,7 +90,8 @@ pub const Shared = struct {
             .jev = .init(gpa, io, env),
             .catalog = .{ .gpa = gpa },
             .log = .{ .gpa = gpa },
-            .pictures = .{ .gpa = gpa, .io = io, .home = home },
+            .pictures = .{ .gpa = gpa, .io = io, .home = home, .fetch = true },
+            .prefs = .init(gpa, io, arena, home, env),
         };
         s.log.load(io, try std.fs.path.join(arena, &.{ home, "Library", "Application Support", "nanoterm", "sessions.jsonl" }));
         s.appearance_path = try std.fs.path.join(arena, &.{ home, "Library", "Application Support", "nanoterm", "appearance" });
@@ -109,6 +112,10 @@ pub const Shared = struct {
         @import("view_markdown.zig").pictures = &s.pictures;
         s.jev.changed = .{ .ctx = s, .func = redrawCtx };
         s.catalog.changed = .{ .ctx = s, .func = redrawCtx };
+        s.pictures.changed = .{ .ctx = s, .func = redrawCtx };
+        s.prefs.account.changed = .{ .ctx = s, .func = redrawCtx };
+        s.prefs.account.key_changed = .{ .ctx = &s.jev, .func = @import("jev.zig").Jev.setKey };
+        s.prefs.account.load();
     }
 
     pub fn deinit(s: *Shared) void {
@@ -120,6 +127,7 @@ pub const Shared = struct {
         s.history.deinit();
         s.jev.deinit();
         s.catalog.deinit();
+        s.prefs.deinit();
     }
 
     fn redrawCtx(ctx: *anyopaque) void {
@@ -236,6 +244,7 @@ pub const Session = struct {
             .shell = .init(gpa, .{ .ctx = a, .changed = changed, .exited = shellExited }),
             .menu = .init(gpa),
             .attachments = .{ .gpa = gpa },
+            .which = shared.prefs.agent,
         };
         shared.next_session += 1;
         a.startShell(cwd_) catch |err| {

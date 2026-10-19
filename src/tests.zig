@@ -32,6 +32,9 @@ test {
     _ = @import("tests_inline.zig");
     _ = @import("markdown_html.zig");
     _ = @import("mermaid.zig");
+    _ = @import("web.zig");
+    _ = @import("agents.zig");
+    _ = @import("tests_settings.zig");
     _ = @import("tests_screen.zig");
     _ = @import("split.zig");
     _ = @import("commands.zig");
