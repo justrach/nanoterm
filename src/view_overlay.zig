@@ -48,7 +48,18 @@ fn firstRow(pick: usize) usize {
     return if (pick >= rows) pick + 1 - rows else 0;
 }
 
-const Row = struct { icon: []const u8, title: []const u8, detail: []const u8 = "", right: []const u8 = "", current: bool = false, mono: bool = false, keys: bool = false };
+const Row = struct {
+    icon: []const u8,
+    title: []const u8,
+    detail: []const u8 = "",
+    right: []const u8 = "",
+    current: bool = false,
+    mono: bool = false,
+    keys: bool = false,
+    /// A maker's mark (PNG) in the icon's place, and its name (its key).
+    mark: ?[]const u8 = null,
+    mark_key: []const u8 = "",
+};
 
 /// A list row; true when clicked.
 fn row(c: *ui.Context, w: *Workspace, i: usize, r: Row) bool {
@@ -59,7 +70,12 @@ fn row(c: *ui.Context, w: *Workspace, i: usize, r: Row) bool {
     defer d.end();
     const clicked = d.clicked();
     if (d.hovered()) w.pick = i;
-    ui.icon(c, r.icon, .{ .size = 11, .frame = 16, .color = if (r.current) theme.success else if (picked) theme.accent else theme.muted });
+    const tone = if (r.current) theme.success else if (picked) theme.accent else theme.muted;
+    if (r.mark) |png| {
+        const f = ui.div(c).w(16).h(16).center();
+        defer f.end();
+        _ = ui.image(c, .{ .key = r.mark_key, .bytes = png, .max_width = 15, .max_height = 15, .radius = 0, .tint = tone });
+    } else ui.icon(c, r.icon, .{ .size = 11, .frame = 16, .color = tone });
     {
         const col = ui.div(c).column().gap(1).grow().clip();
         defer col.end();
@@ -69,6 +85,7 @@ fn row(c: *ui.Context, w: *Workspace, i: usize, r: Row) bool {
     if (r.right.len > 0) {
         if (r.keys) ui.kbd(c, r.right) else ui.text(c, r.right, .{ .size = 11.5, .color = theme.muted });
     }
+    if (r.current and r.mark != null) ui.icon(c, "checkmark", .{ .size = 11, .weight = .bold, .color = theme.success });
     return clicked;
 }
 
@@ -100,7 +117,16 @@ fn modelsView(c: *ui.Context, w: *Workspace) void {
     }
     options(c, s);
     const enter = search(c, w, "Search models…");
-    const Choice = struct { value: []const u8, row: Row };
+    // graff's session, once up, lists its models with makers and how each
+    // is paid for: asked once.
+    const cat = &s.shared.catalog;
+    if (s.which == .graff and cat.acp == .none) if (s.agent) |ag| if (ag.session != null) {
+        cat.acp = .asked;
+        ag.client.request("graff/models", .{}, cat, @import("catalog.zig").Catalog.onAcp) catch {
+            cat.acp = .answered;
+        };
+    };
+    const Choice = struct { value: []const u8, row: Row, section: []const u8 = "" };
     var list: std.ArrayList(Choice) = .empty;
     const q = w.query.text();
     const current = assist.modelLabel(s);
@@ -109,12 +135,19 @@ fn modelsView(c: *ui.Context, w: *Workspace) void {
             list.append(c.alloc(), .{ .value = ch.value, .row = .{ .icon = if (std.mem.eql(u8, ch.value, o.current)) "checkmark.circle.fill" else "cpu", .title = ch.name, .detail = ch.description, .current = std.mem.eql(u8, ch.value, o.current) } }) catch {};
     };
     if (list.items.len == 0 and s.which == .graff) {
-        const cat = &s.shared.catalog;
+        const CatMod = @import("catalog.zig");
+        const marks = @import("marks.zig");
         for (cat.models.items) |m| {
             const name = c.print("{s} {s}", .{ m.provider, m.name });
             if (palette.score(name, q) == null) continue;
-            const is_current = std.mem.eql(u8, m.name, current);
-            list.append(c.alloc(), .{ .value = m.name, .row = .{ .icon = if (is_current) "checkmark.circle.fill" else "cpu", .title = m.name, .detail = c.print("{s} · {s}", .{ m.provider, m.detail }), .current = is_current, .mono = true } }) catch {};
+            const is_current = if (cat.acp == .answered) m.current else std.mem.eql(u8, m.name, current);
+            const mk = marks.maker(m.maker, m.provider, m.name);
+            const note = CatMod.costNote(m.cost);
+            list.append(c.alloc(), .{
+                .value = m.name,
+                .section = if (note.len > 0) c.print("{s} · {s}", .{ CatMod.providerName(m.provider), note }) else CatMod.providerName(m.provider),
+                .row = .{ .icon = if (is_current) "checkmark.circle.fill" else "cpu", .title = m.name, .detail = if (cat.acp == .answered) m.detail else c.print("{s} · {s}", .{ m.provider, m.detail }), .current = is_current, .mono = true, .mark = marks.of(mk), .mark_key = c.print("mark-{s}", .{mk}) },
+            }) catch {};
             if (list.items.len >= 300) break;
         }
         if (cat.state == .loading) ui.text(c, "Loading graff's models…", .{ .size = 12, .color = theme.muted });
@@ -125,6 +158,13 @@ fn modelsView(c: *ui.Context, w: *Workspace) void {
     var chosen: ?[]const u8 = if (enter) (if (items.len > 0) items[w.pick].value else if (q.len > 0) q else null) else null;
     const first = firstRow(w.pick);
     for (items[first..@min(items.len, first + rows)], first..) |ch, i| {
+        // A provider's title where its models start: "Codex · your plan".
+        if (ch.section.len > 0 and (i == first or !std.mem.eql(u8, ch.section, items[i - 1].section))) {
+            ui.key(c, c.print("section-{d}", .{i}));
+            const h = ui.div(c).row().wFull().px(10).pt(if (i == first) 2 else 8).pb(2);
+            defer h.end();
+            ui.text(c, ch.section, .{ .size = 11, .weight = .semibold, .color = theme.muted });
+        }
         if (row(c, w, i, ch.row)) chosen = ch.value;
     }
     if (items.len == 0 and s.agent != null and s.agent.?.status == .starting) ui.text(c, c.print("Starting {s} to see its models…", .{s.which.label()}), .{ .size = 12, .color = theme.muted });

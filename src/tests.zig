@@ -33,6 +33,7 @@ test {
     _ = @import("markdown_html.zig");
     _ = @import("mermaid.zig");
     _ = @import("web.zig");
+    _ = @import("marks.zig");
     _ = @import("agents.zig");
     _ = @import("tests_settings.zig");
     _ = @import("tests_screen.zig");

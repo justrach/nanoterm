@@ -43,3 +43,13 @@ Harness or graff.
 `show_visual` runs [Luau](https://luau.org), the language by Roblox (MIT).
 nanoterm interprets it with its own implementation in `src/luau/`, written for
 nanoterm; it includes no code from Luau.
+
+## Marks
+
+The model picker and Settings show monochrome marks, drawn to PNG
+(`src/marks/`). The agents' marks and those of Anthropic, OpenAI and xAI are
+Harness's (its `crates/ui/assets/icons`). The other model makers' marks are
+from [LobeHub Icons](https://github.com/lobehub/lobe-icons), as Harness ships
+them; LobeHub Icons is MIT licensed, Copyright (c) 2023 LobeHub, and its
+license is kept at `src/marks/LICENSE.lobehub`. The marks identify each agent
+and each model's maker and imply no affiliation or endorsement.

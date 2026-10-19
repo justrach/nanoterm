@@ -23,7 +23,8 @@ pub fn panel(c: *ui.Context, w: *Workspace, s: *Session, focused: bool) void {
     const p = ui.div(c).column().wFull();
     defer p.end();
     {
-        const top = ui.div(c).column().wFull().px(16).pt(6).gap(7);
+        // Floating, with room under it to the window's edge.
+        const top = ui.div(c).column().wFull().px(16).pt(6).pb(16).gap(7);
         defer top.end();
         if (focused and s.menu.open) menu(c, s);
         // Harness's composer: a rounded pill, the pictures, the text, and
@@ -58,11 +59,6 @@ pub fn panel(c: *ui.Context, w: *Workspace, s: *Session, focused: bool) void {
         assist.refresh(s);
         actions(c, w, s);
     }
-    // The status line keeps the window's color: small text over output
-    // scrolling by would not read.
-    const line = ui.div(c).column().wFull().px(16).pt(12).pb(12).bg(theme.background);
-    defer line.end();
-    status(c, s, focused);
 }
 
 /// The pill's controls: attach, where Return goes, the agent and model,
@@ -106,33 +102,6 @@ fn actions(c: *ui.Context, w: *Workspace, s: *Session) void {
     if (running and !can_send) {
         _ = c.leaf(.{ .width = .{ .px = 11 }, .height = .{ .px = 11 }, .radius = 3, .background = theme.background }, .none, null);
     } else ui.icon(c, "arrow.up", .{ .size = 13, .weight = .bold, .color = theme.background });
-}
-
-/// Under the pill: where you are, what runs, and the keys worth knowing.
-fn status(c: *ui.Context, s: *Session, focused: bool) void {
-    const r = ui.div(c).row().wFull().gap(10).itemsCenter().px(10).clip();
-    defer r.end();
-    // On an SSH host: where you are there, nothing of this machine.
-    if (s.shell.remote) |rem| if (rem.active) {
-        quiet(c, "globe", c.print("{s}:{s}", .{ rem.host, if (rem.cwd.items.len > 0) rem.cwd.items else "~" }), theme.accent);
-        if (rem.current) |b| quiet(c, "play.fill", c.print("running {s}", .{b.command}), theme.accent);
-        ui.spacer(c);
-        if (focused) hints(c, s);
-        return;
-    };
-    quiet(c, "folder", blocks.tildePath(c.alloc(), s.cwd(), s.home), theme.muted);
-    const branch = s.gitBranch();
-    if (branch.len > 0) quiet(c, "arrow.triangle.branch", branch, theme.muted);
-    if (s.shell.current) |b| quiet(c, "play.fill", c.print("running {s}", .{b.command}), theme.accent);
-    ui.spacer(c);
-    if (focused) hints(c, s);
-}
-
-fn quiet(c: *ui.Context, icon: []const u8, label: []const u8, color: ui.Color) void {
-    const d = ui.div(c).row().gap(5).itemsCenter();
-    defer d.end();
-    ui.icon(c, icon, .{ .size = 10, .color = color });
-    ui.text(c, label, .{ .size = 11.5, .mono = true, .color = color });
 }
 
 /// The pictures going with the next prompt, as thumbnails (a chip where
@@ -197,26 +166,6 @@ fn modePill(c: *ui.Context, s: *Session) void {
     ui.text(c, if (input_only) "input" else if (agent) "agent" else if (s.shell.remoteReady()) s.shell.remote.?.host else "shell", .{ .size = 11, .weight = .semibold, .color = color });
     const why: []const u8 = if (input_only or s.input.len == 0 and s.lock == null) "" else if (s.lock != null) "locked" else if (s.decidedByJev()) "jev" else "auto";
     if (why.len > 0) ui.text(c, why, .{ .size = 9.5, .color = color.alpha(0.7) });
-}
-
-fn hints(c: *ui.Context, s: *Session) void {
-    const r = ui.div(c).row().gap(14).clip();
-    defer r.end();
-    const agent = s.mode() == .agent;
-    // Each hint a key cap and what it does.
-    const list: []const [2][]const u8 = if (s.menu.open)
-        &.{ .{ "↑↓", "choose" }, .{ "Tab", "take" }, .{ "esc", "close" } }
-    else if (agent)
-        &.{ .{ "↩", "ask" }, .{ binds.label("Cmd+I"), "shell" }, .{ "/", "commands" }, .{ binds.label("Cmd+Shift+M"), "model" }, .{ binds.label("Cmd+P"), "palette" }, .{ "esc", "stop" } }
-    else
-        &.{ .{ "↩", "run" }, .{ binds.label("Cmd+I"), "agent" }, .{ "Tab", "complete" }, .{ "→", "accept" }, .{ binds.label("Cmd+P"), "palette" }, .{ "↑↓", "history" } };
-    for (list) |h| {
-        const pair = ui.div(c).row().gap(5).itemsCenter();
-        defer pair.end();
-        ui.kbd(c, h[0]);
-        ui.text(c, h[1], .{ .size = 11, .color = theme.faint });
-    }
-    if (s.selected != null and agent) ui.text(c, "the selected block goes with your prompt", .{ .size = 11, .color = theme.agent.alpha(0.8) });
 }
 
 fn menu(c: *ui.Context, s: *Session) void {

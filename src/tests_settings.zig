@@ -204,3 +204,55 @@ test "a command run in a new tab (an installer, a sign-in) waits for its shell's
     defer gpa.free(text);
     try std.testing.expectEqualStrings("signed in", text);
 }
+
+test "the model picker: graff's models by provider, plans first, with their makers' marks" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+    var arena_state: std.heap.ArenaAllocator = .init(gpa);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const home = "/tmp/nanoterm-test-models";
+    std.Io.Dir.cwd().deleteTree(io, home) catch {};
+    try std.Io.Dir.cwd().createDirPath(io, home);
+    var env: std.process.Environ.Map = .init(arena);
+    try env.put("HOME", home);
+    try env.put("PATH", "/usr/bin:/bin");
+    var shared = try session_mod.Shared.init(gpa, io, arena, &env);
+    shared.wire();
+    defer shared.deinit();
+    // As graff/models answers: signed-in providers, each row's maker and cost.
+    const json =
+        \\{"models":[
+        \\ {"provider":"codegraff","name":"claude-opus-5-5","maker":"anthropic","context":1000000,"authenticated":true,"cost":"credits"},
+        \\ {"provider":"codegraff","name":"kimi-k3","maker":"moonshot","context":262144,"authenticated":true,"cost":"credits"},
+        \\ {"provider":"anthropic","name":"claude-sonnet-5-5","maker":"anthropic","context":1000000,"authenticated":true,"cost":"api"},
+        \\ {"provider":"chatgpt-new","name":"gpt-6.1-sol","maker":"openai","context":272000,"authenticated":true,"cost":"plan","current":true},
+        \\ {"provider":"xai","name":"grok-5","maker":"xai","context":2000000,"authenticated":true,"cost":"plan"},
+        \\ {"provider":"mlx","name":"mlx-community/Qwen3.6-27B","context":262144,"authenticated":true,"cost":"local"}]}
+    ;
+    const parsed = try std.json.parseFromSlice(std.json.Value, gpa, json, .{});
+    defer parsed.deinit();
+    try shared.catalog.fromAcp(parsed.value);
+    shared.catalog.acp = .answered;
+    var w: ws_mod.Workspace = .{ .shared = &shared, .nanoapp = undefined };
+    defer w.deinit();
+    _ = try w.newTab(home);
+    var t: ui.Tester = undefined;
+    try t.init(gpa, .init(&w, view.view), .{ .width = 900, .height = 760, .theme = theme.ui() });
+    defer t.deinit();
+    w.openModels();
+    t.settle(1);
+    try std.testing.expect(t.hasText("ChatGPT · your plan"));
+    try std.testing.expect(t.hasText("xAI · your plan"));
+    try std.testing.expect(t.hasText("MLX · local"));
+    try std.testing.expect(t.hasText("Codegraff · credits"));
+    // Your plans lead (the one in use first); your own keys come last.
+    try std.testing.expect(t.findText("ChatGPT · your plan").?.y < t.findText("xAI · your plan").?.y);
+    try std.testing.expect(t.findText("xAI · your plan").?.y < t.findText("Codegraff · credits").?.y);
+    var marks: usize = 0;
+    for (t.ctx.nodes.items) |n| if (n.content == .image) {
+        marks += 1;
+    };
+    try std.testing.expect(marks >= 5);
+    try t.screenshot("/tmp/nanoterm-models.png");
+}

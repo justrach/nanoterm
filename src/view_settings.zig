@@ -98,6 +98,11 @@ fn agentList(c: *ui.Context, w: *Workspace) void {
         const have = prefs.installed.get(info.which);
         _ = c.leaf(.{ .width = .{ .px = 7 }, .height = .{ .px = 7 }, .radius = 3.5, .background = if (have) theme.success else theme.faint }, .none, null);
         {
+            const f = ui.div(c).w(22).h(22).center();
+            defer f.end();
+            _ = ui.image(c, .{ .key = c.print("agent-mark-{s}", .{@tagName(info.which)}), .bytes = @import("marks.zig").agent(info.which), .max_width = 20, .max_height = 20, .radius = 0, .tint = if (have) theme.text else theme.faint });
+        }
+        {
             const t = ui.div(c).column().grow().gap(2);
             defer t.end();
             ui.text(c, info.which.label(), .{ .size = 13.5, .weight = .semibold });
