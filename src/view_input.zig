@@ -60,7 +60,7 @@ pub fn panel(c: *ui.Context, w: *Workspace, s: *Session, focused: bool) void {
     }
     // The status line keeps the window's color: small text over output
     // scrolling by would not read.
-    const line = ui.div(c).column().wFull().px(16).pt(7).pb(10).bg(theme.background);
+    const line = ui.div(c).column().wFull().px(16).pt(12).pb(12).bg(theme.background);
     defer line.end();
     status(c, s, focused);
 }

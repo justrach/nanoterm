@@ -160,3 +160,47 @@ test "the Settings page: account, agents, appearance, updates" {
     try std.testing.expect(t.containsText("doesn't update itself"));
     try t.screenshot("/tmp/nanoterm-settings.png");
 }
+
+fn printed(_: *ui.Tester, s: *session_mod.Session) bool {
+    if (s.shell.busy() or s.timeline.items.len == 0) return false;
+    return switch (s.timeline.items[s.timeline.items.len - 1]) {
+        .block => |b| b.state == .done and b.output.lineCount() > 0,
+        else => false,
+    };
+}
+
+test "a command run in a new tab (an installer, a sign-in) waits for its shell's first prompt" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+    var arena_state: std.heap.ArenaAllocator = .init(gpa);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const home = "/tmp/nanoterm-test-newtab-run";
+    std.Io.Dir.cwd().deleteTree(io, home) catch {};
+    try std.Io.Dir.cwd().createDirPath(io, home);
+    var env: std.process.Environ.Map = .init(arena);
+    try env.put("HOME", home);
+    try env.put("PATH", "/usr/bin:/bin");
+    var shared = try session_mod.Shared.init(gpa, io, arena, &env);
+    shared.wire();
+    defer shared.deinit();
+    var w: ws_mod.Workspace = .{ .shared = &shared, .nanoapp = undefined };
+    defer w.deinit();
+    var t: ui.Tester = undefined;
+    const s = try w.newTab(home);
+    // Before its shell has started.
+    try std.testing.expectEqual(@import("shell.zig").Phase.starting, s.shell.phase);
+    s.run("printf 'signed in\\n'");
+    try t.init(gpa, .init(&w, view.view), .{ .width = 900, .height = 560, .theme = theme.ui() });
+    defer t.deinit();
+    var waited: f64 = 0;
+    while (!printed(&t, s)) : (waited += 0.02) {
+        if (waited > 10) return error.Timeout;
+        nanoui.runFor(0.02);
+        t.frame();
+    }
+    const b = s.timeline.items[s.timeline.items.len - 1].block;
+    const text = try b.output.plainText(gpa);
+    defer gpa.free(text);
+    try std.testing.expectEqualStrings("signed in", text);
+}

@@ -431,6 +431,12 @@ pub const Session = struct {
             a.shell.submitRemote(b);
             return;
         }
+        // The shell is still starting (a new tab): run it at the first
+        // prompt, or its marks would end the block before it starts.
+        if (a.shell.phase == .starting) {
+            a.queue.append(a.gpa, a.arena.dupe(u8, command) catch return) catch {};
+            return;
+        }
         if (a.shell.busy()) {
             // A command runs: what is typed is its input.
             a.shell.input(command);
