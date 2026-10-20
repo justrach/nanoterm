@@ -405,7 +405,12 @@ pub const Shell = struct {
                     s.phase = .ready;
                     s.discard.clear();
                 },
-                'C' => s.phase = .running,
+                'C' => {
+                    s.phase = .running;
+                    // Its output starts on the row the cursor is on now,
+                    // past the echo of what was typed.
+                    if (s.current) |b| b.output.line_row = s.cursor.row;
+                },
                 'D' => {
                     const code = if (rest.len > 2) std.fmt.parseInt(i32, rest[2..], 10) catch 0 else 0;
                     // The SSH session ended: so did what ran in it.

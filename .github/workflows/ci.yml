@@ -53,14 +53,15 @@ jobs:
       # Run directly, each test named as it starts: one that hangs shows.
       - run: zig-out/windows/bin/nanoterm-tests.exe
       # The app itself, without a window: past onboarding, two commands in
-      # PowerShell, each a block; the picture is kept with the run.
+      # PowerShell, each a block; the picture is kept with the run. (Piped,
+      # so PowerShell waits for it: it's a windowed program.)
       - name: nanoterm, headless, running commands
         run: |
           $dir = "$env:USERPROFILE\Library\Application Support\nanoterm"
           New-Item -ItemType Directory -Force -Path $dir | Out-Null
           '{"onboarded": true, "agents": false}' | Set-Content "$dir\settings.json"
           zig build --prefix zig-out/windows
-          zig-out/windows/bin/nanoterm.exe "--nanoui-snapshot=$env:RUNNER_TEMP\nanoterm-windows.png" "--nanoui-script=live:10;type:echo hello from Windows;key:enter;live:5;type:ls C:\Windows\Web;key:enter;live:6"
+          zig-out/windows/bin/nanoterm.exe "--nanoui-snapshot=$env:RUNNER_TEMP\nanoterm-windows.png" "--nanoui-script=live:10;type:echo hello from Windows;key:enter;live:5;type:ls C:\Windows\Web;key:enter;live:6" | Out-Null
       - uses: actions/upload-artifact@v4
         if: always()
         with:

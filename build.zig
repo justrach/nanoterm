@@ -14,6 +14,8 @@ pub fn build(b: *std.Build) void {
         .imports = &.{.{ .name = "nanoui", .module = nanoui }},
     });
     const exe = b.addExecutable(.{ .name = "nanoterm", .root_module = mod });
+    // A window of its own on Windows, without a console window beside it.
+    if (target.result.os.tag == .windows) exe.subsystem = .windows;
     b.installArtifact(exe);
     const run = b.addRunArtifact(exe);
     run.addPassthruArgs();
