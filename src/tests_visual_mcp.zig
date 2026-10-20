@@ -34,7 +34,12 @@ test "the MCP server: initialize, the tool, and calls checked before they're sen
     const init = try answer("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-03-26\"}}", &sent);
     defer init.deinit();
     try std.testing.expectEqualStrings("2025-03-26", init.value.object.get("result").?.object.get("protocolVersion").?.string);
+    // Empty results are objects, not arrays: clients that check types refuse `[]`.
+    try std.testing.expect(init.value.object.get("result").?.object.get("capabilities").?.object.get("tools").? == .object);
     try std.testing.expect(mcp.handle(std.testing.allocator, "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}", Recorder{ .sent = &sent }) == null);
+    const ping = try answer("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"ping\"}", &sent);
+    defer ping.deinit();
+    try std.testing.expect(ping.value.object.get("result").? == .object);
 
     const list = try answer("{\"jsonrpc\":\"2.0\",\"id\":\"a\",\"method\":\"tools/list\"}", &sent);
     defer list.deinit();
