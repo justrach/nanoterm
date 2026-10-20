@@ -235,9 +235,11 @@ fn create(argv: [*:null]const ?[*:0]const u8, envp: [*:null]const ?[*:0]const u8
     if (InitializeProcThreadAttributeList(list.ptr, @intCast(attrs.len), 0, &size) == 0) return error.Spawn;
     defer DeleteProcThreadAttributeList(list.ptr);
     for (attrs) |at| if (UpdateProcThreadAttribute(list.ptr, 0, at.id, at.value, at.size, null, null) == 0) return error.Spawn;
-    // Standard handles named, or none: never this process's own (a pseudo
-    // console's program gets the console's).
-    var si: StartupInfoExW = .{ .info = .{ .cb = @sizeOf(StartupInfoExW), .flags = if (stdio != null) STARTF_USESTDHANDLES else 0 }, .attrs = list.ptr };
+    // Standard handles named, or none: never this process's own. A pseudo
+    // console's program gets null ones, so it takes the console's; without
+    // the flag it would take this process's when they are pipes (a test
+    // runner's, CI's) and write past the console.
+    var si: StartupInfoExW = .{ .info = .{ .cb = @sizeOf(StartupInfoExW), .flags = STARTF_USESTDHANDLES }, .attrs = list.ptr };
     if (stdio) |s| {
         si.info.stdin = s[0];
         si.info.stdout = s[1];
