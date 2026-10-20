@@ -115,6 +115,8 @@ pub const Shell = struct {
     /// Where bytes outside a command go: discarded, but parsed so that
     /// escape sequences split across reads stay whole.
     discard: vt.Output,
+    /// The console's cursor row, for every output (Windows moves it by rows).
+    cursor: vt.Cursor = .{},
     alive: bool = false,
     /// An SSH session, while one runs.
     remote: ?Remote = null,
@@ -167,6 +169,9 @@ pub const Shell = struct {
         const cwd_z = try arena.dupeSentinel(u8, cwd, 0);
         s.cols = size.cols;
         s.rows = size.rows;
+        s.cursor.rows = size.rows;
+        s.discard.resize(size.cols, size.rows);
+        if (proc.windows) s.discard.cursor = &s.cursor;
         try proc.spawnPty(&s.process, argv, envp, cwd_z, size, .{ .ctx = s, .output = onOutput, .exited = onExited });
         s.alive = true;
     }
@@ -188,6 +193,7 @@ pub const Shell = struct {
         // A full-screen program draws at the terminal's size and asks it
         // questions (where the cursor is, its colors).
         block.output.resize(s.cols, s.rows);
+        if (proc.windows) block.output.cursor = &s.cursor;
         block.output.reply = .{ .ctx = s, .func = reply };
         s.sendLine(block.command);
     }
@@ -207,6 +213,7 @@ pub const Shell = struct {
     pub fn submitAs(s: *Shell, block: *blocks.Block, text: []const u8) void {
         s.current = block;
         block.output.resize(s.cols, s.rows);
+        if (proc.windows) block.output.cursor = &s.cursor;
         block.output.reply = .{ .ctx = s, .func = reply };
         s.sendLine(text);
     }
@@ -254,6 +261,7 @@ pub const Shell = struct {
         const r = &(s.remote orelse return);
         r.current = block;
         block.output.resize(s.cols, s.rows);
+        if (proc.windows) block.output.cursor = &s.cursor;
         block.output.reply = .{ .ctx = s, .func = reply };
         s.process.send(block.command);
         s.process.send(enter);
@@ -273,6 +281,8 @@ pub const Shell = struct {
         s.cols = cols;
         s.rows = rows;
         if (s.current) |b| b.output.resize(cols, rows);
+        s.cursor.rows = rows;
+        s.discard.resize(cols, rows);
         if (s.alive) s.process.resize(rows, cols);
     }
 

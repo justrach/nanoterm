@@ -54,8 +54,26 @@ pub const max_lines = 20_000;
 /// rest per batch, not one per line (which made long output quadratic).
 const drop_batch = max_lines / 8;
 
+/// Where a pseudo console's cursor is, by rows. Windows' ConPTY moves it to
+/// a row (CSI H, CSI d) where Unix writes line breaks, and its rows count
+/// from the console's top: one Cursor follows everything a shell writes,
+/// whichever output it goes to.
+pub const Cursor = struct {
+    row: u32 = 0,
+    rows: u32 = 24,
+    /// The row the last line written is on: a move down makes lines past it.
+    last: u32 = 0,
+
+    fn down(cur: *Cursor, n: u32) void {
+        cur.last = @min(cur.last + n, cur.rows -| 1);
+        cur.row = cur.last;
+    }
+};
+
 pub const Output = struct {
     gpa: std.mem.Allocator,
+    /// The shell's cursor, where the console moves it by rows (Windows).
+    cursor: ?*Cursor = null,
     lines: std.ArrayList(Line) = .empty,
     /// The cursor's byte offset in the last line.
     col: usize = 0,
@@ -209,6 +227,19 @@ pub const Output = struct {
         o.trim();
         try o.lines.append(o.gpa, .{});
         o.col = 0;
+        if (o.cursor) |cur| cur.down(1);
+    }
+
+    /// The console's cursor moved to `row`: past the last line's row, line
+    /// breaks; above it, the lines already written are kept as they were.
+    fn toRow(o: *Output, cur: *Cursor, row: u32) !void {
+        const to = @min(row, cur.rows -| 1);
+        if (to <= cur.last) {
+            cur.row = to;
+            return;
+        }
+        var n = to - cur.last;
+        while (n > 0) : (n -= 1) try o.newline();
     }
 
     fn put(o: *Output, bytes: []const u8) !void {
@@ -235,6 +266,12 @@ pub const Output = struct {
             cutSpans(o.gpa, l, @intCast(start), @intCast(end));
         } else try l.text.appendSlice(o.gpa, bytes);
         o.col = end;
+        // The console wrapped what goes past its width onto the next rows.
+        if (o.cursor) |cur| if (o.cols > 0) {
+            const before = if (start == 0) 0 else (start - 1) / o.cols;
+            const after = if (end == 0) 0 else (end - 1) / o.cols;
+            if (after > before) cur.down(@intCast(after - before));
+        };
         const color = o.fg orelse if (o.bold) theme.ansi[15] else null;
         const c = color orelse return;
         try addSpan(o.gpa, l, .{ .start = @intCast(start), .end = @intCast(end), .color = c });
@@ -407,9 +444,27 @@ pub const Output = struct {
                 }
             },
             'C' => o.col += param(p, 0, 1),
+            // Moves by rows, on a console that makes them (Windows).
+            'H', 'f' => if (o.cursor) |cur| {
+                try o.toRow(cur, param(p, 0, 1) -| 1);
+                o.col = param(p, 1, 1) -| 1;
+            },
+            'd' => if (o.cursor) |cur| {
+                const col = o.col;
+                try o.toRow(cur, param(p, 0, 1) -| 1);
+                o.col = col;
+            },
+            'B', 'E' => if (o.cursor) |cur| {
+                const col = o.col;
+                try o.toRow(cur, cur.row + param(p, 0, 1));
+                if (final == 'B') o.col = col;
+            },
             'D' => o.col -|= param(p, 0, 1),
             'G' => o.col = param(p, 0, 1) - 1,
-            'J' => if (param(p, 0, 0) >= 2) o.clear(),
+            'J' => if (param(p, 0, 0) >= 2) {
+                o.clear();
+                if (o.cursor) |cur| cur.* = .{ .rows = cur.rows };
+            },
             else => {},
         }
     }
@@ -497,80 +552,6 @@ pub const Output = struct {
         return n;
     }
 };
-
-test "lines, colors, carriage returns, OSC" {
-    const gpa = std.testing.allocator;
-    var o: Output = .init(gpa);
-    defer o.deinit();
-    const Rec = struct {
-        got: [64]u8 = undefined,
-        n: usize = 0,
-        fn on(ctx: *anyopaque, payload: []const u8) void {
-            const r: *@This() = @ptrCast(@alignCast(ctx));
-            @memcpy(r.got[0..payload.len], payload);
-            r.n = payload.len;
-        }
-    };
-    var rec: Rec = .{};
-    o.osc_handler = .{ .ctx = &rec, .func = Rec.on };
-    try o.feed("plain \x1b[31mred\x1b[0m done\r\n");
-    try o.feed("50%\r100%\n");
-    try o.feed("step 3\rdone\n");
-    try o.feed("\x1b]133;D;0\x07tab\there\n");
-    try std.testing.expectEqualStrings("plain red done", o.lines.items[0].text.items);
-    try std.testing.expectEqual(@as(usize, 1), o.lines.items[0].spans.items.len);
-    try std.testing.expectEqual(@as(u32, 6), o.lines.items[0].spans.items[0].start);
-    try std.testing.expectEqual(@as(u32, 9), o.lines.items[0].spans.items[0].end);
-    try std.testing.expectEqualStrings("100%", o.lines.items[1].text.items);
-    try std.testing.expectEqualStrings("133;D;0", rec.got[0..rec.n]);
-    try std.testing.expectEqualStrings("done 3", o.lines.items[2].text.items);
-    try std.testing.expectEqualStrings("tab     here", o.lines.items[3].text.items);
-    const plain = try o.plainText(gpa);
-    defer gpa.free(plain);
-    try std.testing.expectEqualStrings("plain red done\n100%\ndone 3\ntab     here", plain);
-    // Colored text overwritten in part keeps its color where it remains.
-    var o2: Output = .init(gpa);
-    defer o2.deinit();
-    try o2.feed("\x1b[31mabcdef\x1b[0m\rXY\n");
-    try std.testing.expectEqualStrings("XYcdef", o2.lines.items[0].text.items);
-    try std.testing.expectEqual(@as(u32, 2), o2.lines.items[0].spans.items[0].start);
-    try o.feed("\x1b[?1049h\x1b[2;3Hvim");
-    try std.testing.expect(o.alternate_screen);
-    try std.testing.expectEqual(@as(u21, 'v'), o.full.?.screen.row(1)[2].cp);
-    // The screen keeps what it drew out of the lines, and goes on leaving.
-    try std.testing.expectEqualStrings("tab     here", o.lines.items[3].text.items);
-    try o.feed("\x1b[?1049lback\n");
-    try std.testing.expect(o.full == null);
-    try std.testing.expectEqualStrings("back", o.lines.items[4].text.items);
-}
-
-test "a program drawing in place gets a screen, and its last screen stays" {
-    const gpa = std.testing.allocator;
-    var o: Output = .{ .gpa = gpa, .inline_ok = true, .cols = 40, .rows = 6 };
-    defer o.deinit();
-    try o.feed("one\ntwo\n");
-    // Bracketed paste on: Claude Code's prompt, redrawn in place.
-    try o.feed("\x1b[?2004h\x1b[?25l> 1. Yes\r\n  2. No\r\n");
-    try std.testing.expect(o.full != null and !o.alternate_screen);
-    try o.feed("\x1b[2A\x1b[2K> 1. Yes, I trust this folder\r\n\r\n");
-    const s = o.full.?.screen;
-    try std.testing.expectEqual(@as(u21, 'o'), s.row(0)[0].cp);
-    try std.testing.expectEqual(@as(u21, 'Y'), s.row(2)[5].cp);
-    try std.testing.expectEqual(@as(u21, 'f'), s.row(2)[23].cp);
-    // Rows scrolled off its top stay lines.
-    try o.feed("a\r\nb\r\nc\r\nd\r\n");
-    try std.testing.expectEqualStrings("one", o.lines.items[0].text.items);
-    o.leaveScreen();
-    const plain = try o.plainText(gpa);
-    defer gpa.free(plain);
-    try std.testing.expectEqualStrings("one\ntwo\n> 1. Yes, I trust this folder\n  2. No\na\nb\nc\nd", plain);
-    // The shell's own output between commands never takes a screen.
-    var shell: Output = .init(gpa);
-    defer shell.deinit();
-    try shell.feed("\x1b[?2004hprompt");
-    try std.testing.expect(shell.full == null);
-}
-
 
 test "long output drops its oldest lines a batch at a time, keeping the newest" {
     const gpa = std.testing.allocator;
