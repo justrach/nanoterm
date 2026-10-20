@@ -117,6 +117,8 @@ pub const Shell = struct {
     discard: vt.Output,
     /// The console's cursor row, for every output (Windows moves it by rows).
     cursor: vt.Cursor = .{},
+    /// Everything the shell wrote, kept here when set (for tests).
+    raw: ?*std.ArrayList(u8) = null,
     alive: bool = false,
     /// An SSH session, while one runs.
     remote: ?Remote = null,
@@ -304,6 +306,7 @@ pub const Shell = struct {
 
     fn onOutput(ctx: *anyopaque, bytes: []const u8) void {
         const s: *Shell = @ptrCast(@alignCast(ctx));
+        if (s.raw) |r| r.appendSlice(s.gpa, bytes) catch {};
         s.route(bytes) catch {};
         s.events.changed(s.events.ctx);
     }

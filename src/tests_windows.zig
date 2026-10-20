@@ -217,3 +217,44 @@ test "PowerShell cut into blocks: output, exit codes, the folder it moves to" {
     }.ok);
     try std.testing.expect(std.ascii.eqlIgnoreCase("C:\\Windows", sh.cwd.items));
 }
+
+test "zz: a PowerShell session as nanoterm drives it (diagnostic)" {
+    if (underWine()) return error.SkipZigTest;
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+    var arena: std.heap.ArenaAllocator = .init(gpa);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const temp = (try variable(a, "TEMP")) orelse "C:\\";
+    const dir = try std.fs.path.join(a, &.{ temp, "nanoterm-test-pwsh-raw" });
+    var map: std.process.Environ.Map = .init(a);
+    for ([_][]const u8{ "SystemRoot", "PATH", "PATHEXT", "TEMP", "TMP", "USERPROFILE", "COMPUTERNAME", "PSModulePath", "windir", "ProgramFiles", "ProgramData", "APPDATA", "LOCALAPPDATA", "SystemDrive", "ComSpec" }) |k| {
+        if (try variable(a, k)) |v| try map.put(k, v);
+    }
+    var seen: Seen = .{};
+    var sh = shell_mod.Shell.init(gpa, .{ .ctx = &seen, .changed = Seen.onChanged, .exited = Seen.onExited });
+    defer sh.deinit();
+    var raw: std.ArrayList(u8) = .empty;
+    defer raw.deinit(gpa);
+    sh.raw = &raw;
+    try sh.start(a, io, dir, temp, &map, temp, .{ .rows = 30, .cols = 100 });
+    try until(&sh, struct {
+        fn ok(s: *shell_mod.Shell) bool {
+            return s.phase == .ready;
+        }
+    }.ok);
+    for ([_][]const u8{ "echo hello from Windows", "ls C:\\Windows\\Web" }, 0..) |cmd, i| {
+        const b = try blocks.Block.create(gpa, 10 + i, .shell, cmd, temp, "");
+        defer b.destroy(gpa);
+        sh.submit(b);
+        try until(&sh, struct {
+            fn ok(s: *shell_mod.Shell) bool {
+                return !s.busy();
+            }
+        }.ok);
+        const out = try b.output.plainText(gpa);
+        defer gpa.free(out);
+        std.debug.print("BLOCK<<{f}>>BLOCK\n", .{std.zig.fmtString(out)});
+    }
+    std.debug.print("SESSION<<{f}>>SESSION\n", .{std.zig.fmtString(raw.items)});
+}
