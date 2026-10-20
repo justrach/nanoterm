@@ -10,15 +10,46 @@ const nanoui = @import("nanoui");
 const fdwatch = nanoui.fdwatch;
 const agent_mod = @import("agent.zig");
 
-extern "c" fn socket(domain: c_int, kind: c_int, protocol: c_int) c_int;
-extern "c" fn bind(fd: c_int, addr: *const anyopaque, len: c_uint) c_int;
-extern "c" fn listen(fd: c_int, backlog: c_int) c_int;
-extern "c" fn accept(fd: c_int, addr: ?*anyopaque, len: ?*c_uint) c_int;
-extern "c" fn connect(fd: c_int, addr: *const anyopaque, len: c_uint) c_int;
+const windows = builtin.os.tag == .windows;
+const sys = if (windows) NoSockets else struct {
+    extern "c" fn socket(domain: c_int, kind: c_int, protocol: c_int) c_int;
+    extern "c" fn bind(fd: c_int, addr: *const anyopaque, len: c_uint) c_int;
+    extern "c" fn listen(fd: c_int, backlog: c_int) c_int;
+    extern "c" fn accept(fd: c_int, addr: ?*anyopaque, len: ?*c_uint) c_int;
+    extern "c" fn connect(fd: c_int, addr: *const anyopaque, len: c_uint) c_int;
+    extern "c" fn fcntl(fd: c_int, cmd: c_int, ...) c_int;
+};
+/// Visuals don't come to nanoterm on Windows yet (its sockets aren't
+/// files): the host isn't made, and these say so if called.
+const NoSockets = struct {
+    fn socket(_: c_int, _: c_int, _: c_int) c_int {
+        return -1;
+    }
+    fn bind(_: c_int, _: *const anyopaque, _: c_uint) c_int {
+        return -1;
+    }
+    fn listen(_: c_int, _: c_int) c_int {
+        return -1;
+    }
+    fn accept(_: c_int, _: ?*anyopaque, _: ?*c_uint) c_int {
+        return -1;
+    }
+    fn connect(_: c_int, _: *const anyopaque, _: c_uint) c_int {
+        return -1;
+    }
+    fn fcntl(_: c_int, _: c_int, _: c_int) c_int {
+        return -1;
+    }
+};
+const socket = sys.socket;
+const bind = sys.bind;
+const listen = sys.listen;
+const accept = sys.accept;
+const connect = sys.connect;
+const fcntl = sys.fcntl;
 extern "c" fn read(fd: c_int, buf: [*]u8, n: usize) isize;
 extern "c" fn write(fd: c_int, buf: [*]const u8, n: usize) isize;
 extern "c" fn close(fd: c_int) c_int;
-extern "c" fn fcntl(fd: c_int, cmd: c_int, ...) c_int;
 extern "c" fn mkdir(path: [*:0]const u8, mode: c_uint) c_int;
 extern "c" fn rmdir(path: [*:0]const u8) c_int;
 extern "c" fn unlink(path: [*:0]const u8) c_int;
@@ -31,7 +62,7 @@ const O_NONBLOCK = if (builtin.os.tag == .linux) 0o4000 else 0x4;
 /// A message is at most a visual's script, its title and some JSON.
 const max_message = 160 * 1024;
 
-pub const Addr = std.c.sockaddr.un;
+pub const Addr = if (windows) extern struct { family: u16 = AF_UNIX, path: [108]u8 } else std.c.sockaddr.un;
 
 /// The socket address of `path`.
 pub fn address(path: []const u8) !Addr {
@@ -92,6 +123,7 @@ pub const Host = struct {
 
     /// Listens in a new private directory under `tmp`.
     pub fn create(gpa: std.mem.Allocator, io: std.Io, tmp: []const u8) !*Host {
+        if (windows) return error.Unsupported;
         var rnd: [6]u8 = undefined;
         io.random(&rnd);
         const dir = try std.fmt.allocPrintSentinel(gpa, "{s}/nanoterm-{d}-{x}", .{ std.mem.trimEnd(u8, tmp, "/"), getpid(), rnd }, 0);

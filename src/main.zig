@@ -33,6 +33,10 @@ pub fn main(init: std.process.Init) !void {
     const app = try nanoui.App.create(init, .{ .name = "nanoterm" });
     defer app.destroy();
 
+    // Windows has no HOME: the user's profile folder is it.
+    if (@import("proc.zig").windows and init.environ_map.get("HOME") == null) {
+        if (init.environ_map.get("USERPROFILE")) |p| try init.environ_map.put("HOME", p);
+    }
     var shared = try session_mod.Shared.init(init.gpa, init.io, init.arena.allocator(), init.environ_map);
     shared.wire();
     defer shared.deinit();

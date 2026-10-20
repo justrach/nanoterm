@@ -70,7 +70,7 @@ fn start(a: *Agent, id: []const u8, line: []const u8, write: bool, input: ?[]con
         a.gpa.destroy(j);
         return a.client.respondError(id, -32603, "out of memory");
     }, .write = write };
-    const argv = proc.cStrings(arena, &.{ "/bin/sh", "-c", line }) catch return;
+    const argv = proc.cStrings(arena, &proc.shellLine(line)) catch return;
     const envp = proc.cStrings(arena, a.env) catch return;
     const cwd = arena.dupeSentinel(u8, a.cwd, 0) catch return;
     // A read keeps ssh's own messages out of the file's content.

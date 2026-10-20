@@ -32,14 +32,17 @@ pub fn info(which: Which) Info {
 }
 
 /// Folders installers put agents in, besides PATH (`~/` is the home).
-pub const extra_dirs = [_][]const u8{ "~/.local/bin", "~/bin", "~/.harness/bin", "~/.opencode/bin", "~/.grok/bin", "~/.hermes/bin", "~/.claude/local", "~/.bun/bin", "/opt/homebrew/bin", "/usr/local/bin" };
+pub const extra_dirs = if (@import("builtin").os.tag == .windows)
+    [_][]const u8{ "~/.local/bin", "~/AppData/Roaming/npm", "~/.bun/bin", "~/scoop/shims", "~/.cargo/bin" }
+else
+    [_][]const u8{ "~/.local/bin", "~/bin", "~/.harness/bin", "~/.opencode/bin", "~/.grok/bin", "~/.hermes/bin", "~/.claude/local", "~/.bun/bin", "/opt/homebrew/bin", "/usr/local/bin" };
 
 /// PATH with the installers' folders after it, in `arena`.
 pub fn searchPath(arena: std.mem.Allocator, path: []const u8, home: []const u8) []const u8 {
     var out: std.ArrayList(u8) = .empty;
     out.appendSlice(arena, path) catch return path;
     for (extra_dirs) |d| {
-        out.append(arena, ':') catch return path;
+        out.append(arena, std.fs.path.delimiter) catch return path;
         if (std.mem.startsWith(u8, d, "~/")) {
             out.appendSlice(arena, home) catch return path;
             out.appendSlice(arena, d[1..]) catch return path;

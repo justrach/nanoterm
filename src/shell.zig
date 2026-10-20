@@ -1,8 +1,9 @@
-//! The user's shell (zsh) on a pseudo-terminal, cut into blocks. A small
-//! rc file sources the user's own, then adds hooks that mark the prompt
-//! (OSC 133;A), the start of a command's output (133;C), its end with the
-//! exit status (133;D), and the working directory (OSC 7). Output between
-//! C and D is the block's; the prompt and the echo of the command are not.
+//! The user's shell (zsh; PowerShell on Windows) on a pseudo-terminal, cut
+//! into blocks. A small rc file sources the user's own, then adds hooks that
+//! mark the prompt (OSC 133;A), the start of a command's output (133;C), its
+//! end with the exit status (133;D), and the working directory (OSC 7).
+//! Output between C and D is the block's; the prompt and the echo of the
+//! command are not.
 const std = @import("std");
 const proc = @import("proc.zig");
 const vt = @import("vt.zig");
@@ -26,6 +27,32 @@ const integration =
     \\preexec_functions+=(_nanoterm_preexec)
     \\
 ;
+
+// PowerShell has no preexec: Enter (PSReadLine's) marks the start instead.
+// Its profile has run already; the prompt is replaced by the marks.
+const pwsh_integration =
+    \\# nanoterm's shell integration: the marks, after the user's profile.
+    \\function global:prompt {
+    \\  $ok = $?
+    \\  $code = if ($ok) { 0 } elseif ($global:LASTEXITCODE) { $global:LASTEXITCODE } else { 1 }
+    \\  $e = [char]27; $b = [char]7
+    \\  $dir = (Get-Location).ProviderPath -replace '\\', '/'
+    \\  [Console]::Write("$e]133;D;$code$b$e]7;file://$env:COMPUTERNAME/$dir$b$e]133;A$b")
+    \\  ' '
+    \\}
+    \\if (Get-Module PSReadLine) {
+    \\  Set-PSReadLineOption -ContinuationPrompt ''
+    \\  Set-PSReadLineKeyHandler -Chord Enter -ScriptBlock {
+    \\    [Microsoft.PowerShell.PSConsoleReadLine]::AcceptLine()
+    \\    [Console]::Write("$([char]27)]133;C$([char]7)")
+    \\  }
+    \\}
+    \\
+;
+
+/// What ends a line typed to the shell: Return. (A pseudo console reads
+/// "\n" as Ctrl+Enter.)
+pub const enter = if (proc.windows) "\r" else "\n";
 
 const env_rc =
     \\[[ -f "$NANOTERM_USER_ZDOTDIR/.zshenv" ]] && ZDOTDIR="$NANOTERM_USER_ZDOTDIR" source "$NANOTERM_USER_ZDOTDIR/.zshenv"
@@ -67,6 +94,13 @@ pub const Events = struct {
     /// The shell itself ended.
     exited: *const fn (ctx: *anyopaque, code: i32) void,
 };
+
+/// A file URL's path as this machine writes it: /C:/Users/me is C:/Users/me
+/// on Windows (the caller turns its slashes around).
+pub fn localPath(path: []const u8) []const u8 {
+    if (proc.windows and path.len >= 3 and path[0] == '/' and path[2] == ':') return path[1..];
+    return path;
+}
 
 pub const Shell = struct {
     gpa: std.mem.Allocator,
@@ -128,13 +162,23 @@ pub const Shell = struct {
         var it = env.iterator();
         while (it.next()) |e| try items.append(arena, try std.fmt.allocPrint(arena, "{s}={s}", .{ e.key_ptr.*, e.value_ptr.* }));
         const envp = try proc.cStrings(arena, items.items);
-        const argv = try proc.cStrings(arena, &.{ "/bin/zsh", "-i" });
+        const argv = if (proc.windows) try pwsh(arena, io, zdotdir, env) else try proc.cStrings(arena, &.{ "/bin/zsh", "-i" });
         try s.cwd.appendSlice(s.gpa, cwd);
         const cwd_z = try arena.dupeSentinel(u8, cwd, 0);
         s.cols = size.cols;
         s.rows = size.rows;
         try proc.spawnPty(&s.process, argv, envp, cwd_z, size, .{ .ctx = s, .output = onOutput, .exited = onExited });
         s.alive = true;
+    }
+
+    /// PowerShell 7 if installed, else Windows PowerShell, with the marks
+    /// dot-sourced into its session.
+    fn pwsh(arena: std.mem.Allocator, io: std.Io, dir: []const u8, env: *std.process.Environ.Map) ![*:null]const ?[*:0]const u8 {
+        const script = try std.fs.path.join(arena, &.{ dir, "nanoterm.ps1" });
+        try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = script, .data = pwsh_integration });
+        const exe = proc.which(arena, io, env.get("PATH") orelse "", "pwsh.exe") orelse "powershell.exe";
+        const command = try std.fmt.allocPrint(arena, ". '{s}'", .{script});
+        return proc.cStrings(arena, &.{ exe, "-NoLogo", "-NoExit", "-ExecutionPolicy", "Bypass", "-Command", command });
     }
 
     /// Runs `command` as a new block; while a command runs, sends it to
@@ -156,7 +200,7 @@ pub const Shell = struct {
         if (lines) s.process.send("\x1b[200~");
         s.process.send(text);
         if (lines) s.process.send("\x1b[201~");
-        s.process.send("\n");
+        s.process.send(enter);
     }
 
     /// Runs `block`, sending `text` (its command as the shell gets it).
@@ -212,7 +256,7 @@ pub const Shell = struct {
         block.output.resize(s.cols, s.rows);
         block.output.reply = .{ .ctx = s, .func = reply };
         s.process.send(block.command);
-        s.process.send("\n");
+        s.process.send(enter);
     }
 
     /// Text typed while a command runs: its input.
@@ -359,7 +403,8 @@ pub const Shell = struct {
                 return true;
             };
             s.cwd.clearRetainingCapacity();
-            s.cwd.appendSlice(s.gpa, rest[slash..]) catch {};
+            s.cwd.appendSlice(s.gpa, localPath(rest[slash..])) catch {};
+            if (proc.windows) std.mem.replaceScalar(u8, s.cwd.items, '/', '\\');
             return true;
         }
         return false;

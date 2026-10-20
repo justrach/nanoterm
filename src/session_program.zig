@@ -12,7 +12,7 @@ pub fn reading(a: *const Session) bool {
 
 pub fn line(a: *Session) void {
     a.shell.input(a.input.text());
-    a.shell.input("\n");
+    a.shell.input(@import("shell.zig").enter);
     a.input.clear();
     a.history_pos = null;
     a.menu.close();

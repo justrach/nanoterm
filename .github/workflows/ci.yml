@@ -1,0 +1,45 @@
+# Tests nanoterm on every push and pull request: on macOS, on Linux under a
+# virtual display, and on Windows (pipes, pseudo consoles and PowerShell,
+# which Wine can't stand in for).
+name: CI
+
+on:
+  push:
+    branches: [main, windows]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+      - run: zig build test
+
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+      - name: GTK, fonts, zsh and a virtual display
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libgtk-3-0t64 fonts-dejavu-core fonts-noto-core xvfb xauth zsh python3 curl
+      - run: zig build test-bin --prefix zig-out/linux
+      - run: xvfb-run -a zig-out/linux/bin/nanoterm-tests
+
+  windows:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+      - run: zig build test --summary all

@@ -73,7 +73,7 @@ pub const Shared = struct {
     /// Call `wire` once the value is at its final address.
     pub fn init(gpa: std.mem.Allocator, io: std.Io, arena: std.mem.Allocator, env: *std.process.Environ.Map) !Shared {
         const home = env.get("HOME") orelse "/";
-        try augmentPath(arena, io, env, home);
+        try @import("env_path.zig").augment(arena, io, env, home);
         var list: std.ArrayList([]const u8) = .empty;
         var it = env.iterator();
         while (it.next()) |e| try list.append(arena, try std.fmt.allocPrint(arena, "{s}={s}", .{ e.key_ptr.*, e.value_ptr.* }));
@@ -446,7 +446,7 @@ pub const Session = struct {
         if (a.shell.busy()) {
             // A command runs: what is typed is its input.
             a.shell.input(command);
-            a.shell.input("\n");
+            a.shell.input(shell_mod.enter);
             return;
         }
         if (std.mem.eql(u8, command, "clear")) return a.clear();
@@ -568,33 +568,3 @@ pub const Session = struct {
         return ag;
     }
 };
-
-/// Apps opened from the Finder get a bare PATH: add where tools live.
-fn augmentPath(arena: std.mem.Allocator, io: std.Io, env: *std.process.Environ.Map, home: []const u8) !void {
-    var parts: std.ArrayList(u8) = .empty;
-    try parts.appendSlice(arena, env.get("PATH") orelse "/usr/bin:/bin:/usr/sbin:/sbin");
-    const extra = [_][]const u8{ "/opt/homebrew/bin", "/usr/local/bin", "/.local/bin", "/.bun/bin", "/.cargo/bin" };
-    for (extra) |dir| {
-        const full = if (dir[1] == '.') try std.fmt.allocPrint(arena, "{s}{s}", .{ home, dir }) else dir;
-        if (std.mem.indexOf(u8, parts.items, full) == null) {
-            try parts.append(arena, ':');
-            try parts.appendSlice(arena, full);
-        }
-    }
-    // nvm's newest node, for agents' adapters written in JavaScript.
-    const nvm = try std.fmt.allocPrint(arena, "{s}/.nvm/versions/node", .{home});
-    if (std.Io.Dir.cwd().openDir(io, nvm, .{ .iterate = true })) |dir_| {
-        var dir = dir_;
-        defer dir.close(io);
-        var it = dir.iterate();
-        var newest: ?[]const u8 = null;
-        while (it.next(io) catch null) |e| {
-            if (e.kind == .directory and (newest == null or std.mem.order(u8, e.name, newest.?) == .gt)) newest = try arena.dupe(u8, e.name);
-        }
-        if (newest) |v| {
-            try parts.append(arena, ':');
-            try parts.appendSlice(arena, try std.fmt.allocPrint(arena, "{s}/{s}/bin", .{ nvm, v }));
-        }
-    } else |_| {}
-    try env.put("PATH", parts.items);
-}

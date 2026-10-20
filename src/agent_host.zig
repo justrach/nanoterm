@@ -176,7 +176,7 @@ fn createTerminal(a: *Agent, id: []const u8, params: std.json.Value, arena: std.
     var where: []const u8 = cwd;
     if (a.remote) |r| {
         argv.clearRetainingCapacity();
-        try argv.appendSlice(arena, &.{ "/bin/sh", "-c", try r.wrap(arena, label) });
+        try argv.appendSlice(arena, &proc.shellLine(try r.wrap(arena, label)));
         where = try std.fmt.allocPrint(arena, "{s}:{s}", .{ r.host, r.cwd });
         cwd = a.cwd;
     }

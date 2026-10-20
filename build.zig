@@ -21,14 +21,15 @@ pub fn build(b: *std.Build) void {
 
     const filters = b.option([]const []const u8, "test-filter", "Run only the tests whose names contain this") orelse &.{};
     const tests = b.addTest(.{ .filters = filters, .root_module = b.createModule(.{
-        .root_source_file = b.path("src/tests.zig"),
+        // Windows has tests of its own: no zsh, Python or Unix tools there.
+        .root_source_file = b.path(if (target.result.os.tag == .windows) "src/tests_windows.zig" else "src/tests.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{.{ .name = "nanoui", .module = nanoui }},
     }) });
     b.step("test", "Run nanoterm's tests").dependOn(&b.addRunArtifact(tests).step);
     // The tests as a program, for another machine (Linux in a container).
-    b.step("test-bin", "Install the tests as zig-out/bin/nanoterm-tests").dependOn(&b.addInstallArtifact(tests, .{ .dest_sub_path = "nanoterm-tests" }).step);
+    b.step("test-bin", "Install the tests as zig-out/bin/nanoterm-tests").dependOn(&b.addInstallArtifact(tests, .{ .dest_sub_path = if (target.result.os.tag == .windows) "nanoterm-tests.exe" else "nanoterm-tests" }).step);
 
     // The terminal benchmark (bench/README.md): its workloads and report, and
     // nanoterm's engine as a runner. Build it with -Doptimize=ReleaseFast.

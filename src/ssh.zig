@@ -50,7 +50,14 @@ pub fn controlDir(buf: []u8, uid: u32) []const u8 {
 }
 
 extern "c" fn mkdir(path: [*:0]const u8, mode: c_uint) c_int;
-extern "c" fn getuid() c_uint;
+const getuid = if (@import("builtin").os.tag == .windows) struct {
+    // One user's folder on Windows: the temporary one is already theirs.
+    fn f() c_uint {
+        return 0;
+    }
+}.f else struct {
+    extern "c" fn getuid() c_uint;
+}.getuid;
 
 /// The directory of shared connections, made (only the user may open it).
 pub fn ensureDir(buf: []u8) []const u8 {
@@ -62,6 +69,8 @@ pub fn ensureDir(buf: []u8) []const u8 {
 
 /// `ssh …` with the connection shared: options right after `ssh`.
 pub fn shared(arena: std.mem.Allocator, command: []const u8, dir: []const u8) ![]const u8 {
+    // Windows' OpenSSH can't share connections.
+    if (@import("builtin").os.tag == .windows) return command;
     const rest = std.mem.trimStart(u8, command[3..], " ");
     return std.fmt.allocPrint(arena, "ssh -o ControlMaster=auto -o ControlPath={s}/%C -o ControlPersist={s} {s}", .{ dir, persist, rest });
 }

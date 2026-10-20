@@ -155,7 +155,7 @@ pub const Jev = struct {
         };
         try config.appendSlice(arena, "\"\n");
         j.reply.clearRetainingCapacity();
-        try proc.spawnPipes(&j.process, try proc.cStrings(arena, &.{ "/usr/bin/curl", "-K", "-" }), try proc.cStrings(arena, &.{"PATH=/usr/bin:/bin"}), null, false, .{ .ctx = j, .output = onOutput, .exited = onExit });
+        try proc.spawnPipes(&j.process, try proc.cStrings(arena, &.{ proc.curl, "-K", "-" }), try proc.cStrings(arena, proc.curl_env), null, false, .{ .ctx = j, .output = onOutput, .exited = onExit });
         j.running = true;
         j.calls += 1;
         j.process.send(config.items);

@@ -54,7 +54,7 @@ pub const Call = struct {
         try config.print(arena, "silent\nfail\nlocation\nproto = \"=https,http\"\nmax-time = {d}\nmax-filesize = {d}\n", .{ o.max_seconds, o.max_bytes });
         call.body.clearRetainingCapacity();
         call.done = done;
-        try proc.spawnPipes(&call.process, try proc.cStrings(arena, &.{ "/usr/bin/curl", "-K", "-" }), try proc.cStrings(arena, &.{"PATH=/usr/bin:/bin"}), null, false, .{ .ctx = call, .output = onOutput, .exited = onExit });
+        try proc.spawnPipes(&call.process, try proc.cStrings(arena, &.{ proc.curl, "-K", "-" }), try proc.cStrings(arena, proc.curl_env), null, false, .{ .ctx = call, .output = onOutput, .exited = onExit });
         call.running = true;
         call.process.send(config.items);
         call.process.closeInput();
