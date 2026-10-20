@@ -186,11 +186,11 @@ test "PowerShell cut into blocks: output, exit codes, the folder it moves to" {
             return !s.busy();
         }
     }.ok);
-    const seen = try b2x.output.plainText(gpa);
-    defer gpa.free(seen);
+    const after = try b2x.output.plainText(gpa);
+    defer gpa.free(after);
     const b2_out = try b2.output.plainText(gpa);
     defer gpa.free(b2_out);
-    errdefer std.debug.print("exit 3 block: code {any}, output {s}; then {s}\n", .{ b2.exit_code, b2_out, seen });
+    errdefer std.debug.print("exit 3 block: code {any}, output {s}; then {s}\n", .{ b2.exit_code, b2_out, after });
     try std.testing.expectEqual(@as(i32, 3), b2.exit_code.?);
 
     const b3 = try blocks.Block.create(gpa, 3, .shell, "Set-Location C:\\Windows", temp, "");
