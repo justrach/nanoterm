@@ -91,6 +91,18 @@ pub fn main(init: std.process.Init) !void {
         .changed = .{ .ctx = &shared, .func = updateReady },
     });
     defer w.updater.?.deinit();
+    // graff kept current, as Harness keeps it: where nanoterm updates
+    // itself (an installed app), and on Linux.
+    const graff_update = @import("graff_update.zig");
+    if (w.updater.?.phase.load(.acquire) != .off or @import("builtin").os.tag == .linux) {
+        const search = @import("agents.zig").searchPath(init.arena.allocator(), init.environ_map.get("PATH") orelse "", init.environ_map.get("HOME") orelse "/");
+        graff_update.global = try graff_update.Updater.create(init.gpa, init.io, init.environ_map, search);
+    }
+    if (graff_update.global) |g| {
+        g.changed = .{ .ctx = &shared, .func = updateReady };
+        g.start();
+    }
+    defer if (graff_update.global) |g| g.destroy();
     if (w.updater.?.current.len > 0) shared.prefs.telemetry.version = w.updater.?.current;
     shared.prefs.track("app_open", .{});
     // The first launch: a few choices before anything else.

@@ -165,7 +165,18 @@ under their own avatars.
 
 The agent is **graff** (`graff acp --yolo`) or
 **Claude Code** (its ACP adapter `claude-agent-acp`: Zed's install, else
-`npx -y @zed-industries/claude-agent-acp`). nanoterm is the ACP client:
+`npx -y @zed-industries/claude-agent-acp`).
+
+graff is kept current as Harness keeps it: nanoterm keeps its own copy
+(`~/Library/Application Support/nanoterm/bin/graff`) and replaces it from
+codegraff's latest stable release, after checking it against the release's
+`SHA256SUMS` and running it, shortly after launch, hourly, and when a graff
+session starts. Sessions run the newest graff there is, on PATH or this copy,
+and a card says when it was updated, with what's new. `GRAFF_EXECUTABLE`
+runs your own graff instead and leaves it alone;
+`NANOTERM_GRAFF_AUTO_UPDATE=0` turns updates off.
+
+nanoterm is the ACP client:
 
 - `initialize` with the file system and terminal capabilities, `session/new`
   in the shell's directory, `session/prompt`, `session/cancel` (⌃C, Esc);

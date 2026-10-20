@@ -62,6 +62,8 @@ test {
     _ = @import("blocks.zig");
     _ = @import("highlight.zig");
     _ = @import("tests_view.zig");
+    _ = @import("tests_graff_update.zig");
+    _ = @import("graff_update.zig");
     _ = @import("tests_agent.zig");
     _ = @import("tests_stream.zig");
 }
