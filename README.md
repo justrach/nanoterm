@@ -41,6 +41,18 @@ SHA-256. Releases are built by
 [`.github/workflows/release.yml`](.github/workflows/release.yml), and
 `sh macos/package.sh` builds the same disk image locally.
 
+**Windows** (10 1809 or later, x86_64 or arm64):
+[x86_64](https://github.com/justrach/nanoterm/releases/latest/download/nanoterm-windows-x86_64.zip)
+or [arm64](https://github.com/justrach/nanoterm/releases/latest/download/nanoterm-windows-aarch64.zip):
+unzip and run `nanoterm.exe`. The shell is PowerShell (7 if it's installed,
+else Windows PowerShell) on a pseudo console, cut into blocks as zsh is on
+macOS. The program isn't signed yet, so SmartScreen asks once ("More info",
+then "Run anyway"). `sh tools/package-windows.sh` builds the zips.
+
+**Linux** (x86_64 or arm64, GTK 3):
+[x86_64](https://github.com/justrach/nanoterm/releases/latest/download/nanoterm-linux-x86_64.tar.gz)
+or [arm64](https://github.com/justrach/nanoterm/releases/latest/download/nanoterm-linux-aarch64.tar.gz).
+
 ## Get started
 
 nanoterm builds on its own. It fetches nanoui, pinned by commit in
