@@ -60,12 +60,13 @@ test "the sidebar: projects, states, needs you, unread until seen, a click" {
     defer t.deinit();
     t.settle(0.5);
     try std.testing.expect(sidebar.shown(&w));
-    for ([_][]const u8{ "launchpad", "ios-app", "notes", "landing-hero", "pricing-page", "launch-thread", "onboarding-v2", "1 needs you", "Working · 1m", "~/code/launchpad" }) |s| {
+    for ([_][]const u8{ "launchpad", "ios-app", "notes", "landing-hero", "pricing-page", "launch-thread", "onboarding-v2", "1 needs you", "~/code/launchpad" }) |s| {
         if (!t.hasText(s)) {
             std.debug.print("missing: {s}\n", .{s});
             return error.TextMissing;
         }
     }
+    try std.testing.expect(t.containsText("Working · "));
     // launchpad's three tabs are one group, before ios-app's.
     try std.testing.expect(t.findText("launch-thread").?.y < t.findText("ios-app").?.y);
     try std.testing.expect(t.findText("launchpad").?.y < t.findText("landing-hero").?.y);
@@ -76,7 +77,8 @@ test "the sidebar: projects, states, needs you, unread until seen, a click" {
     t.settle(0.5);
     try std.testing.expectEqual(@as(usize, 2), w.active);
     try std.testing.expectEqual(@as(usize, 1), w.tabs.items[2].seen_turns);
-    try std.testing.expect(t.hasText("Done · 4m"));
+    // Its state in the title (the minutes depend on how long the shells took to start).
+    try std.testing.expect(t.containsText("Done · "));
     // Hidden from the View menu: the tabs are back in the title bar.
     w.sidebar = .hidden;
     t.settle(0.5);
