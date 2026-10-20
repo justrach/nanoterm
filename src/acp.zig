@@ -82,6 +82,11 @@ pub const Client = struct {
         c.send(aw.written());
     }
 
+    /// What a request with nothing to return answers: `{}`, as ACP's schema
+    /// has it (an empty `.{}` is a tuple, which std.json writes as `[]`;
+    /// `null` is refused by agents that check types).
+    pub const Empty = struct {};
+
     /// Answers the agent's request `id` (JSON, as the handler got it).
     pub fn respond(c: *Client, id: []const u8, result: anytype) void {
         var aw: std.Io.Writer.Allocating = .init(c.gpa);

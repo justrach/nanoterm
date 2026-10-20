@@ -177,6 +177,11 @@ const fake_agent =
     \\        code = recv()["result"]["exitCode"]
     \\        send({"jsonrpc": "2.0", "id": 102, "method": "terminal/output", "params": {"sessionId": "s1", "terminalId": tid}})
     \\        out = recv()["result"]["output"]
+    \\        # Answers with nothing to say are objects, as ACP's schema has them.
+    \\        send({"jsonrpc": "2.0", "id": 104, "method": "terminal/release", "params": {"sessionId": "s1", "terminalId": tid}})
+    \\        assert isinstance(recv()["result"], dict), "terminal/release must answer an object"
+    \\        send({"jsonrpc": "2.0", "id": 105, "method": "fs/write_text_file", "params": {"sessionId": "s1", "path": "/tmp/nanoterm-test-acp-write.txt", "content": "hi"}})
+    \\        assert isinstance(recv()["result"], dict), "fs/write_text_file must answer an object"
     \\        up({"sessionUpdate": "tool_call_update", "toolCallId": "t1", "status": "completed"})
     \\        send({"jsonrpc": "2.0", "id": 103, "method": "session/request_permission", "params": {"sessionId": "s1", "toolCall": {"title": "Write a file"}, "options": [{"optionId": "yes", "name": "Allow", "kind": "allow_once"}, {"optionId": "no", "name": "Reject", "kind": "reject_once"}]}})
     \\        answer = recv()["result"]["outcome"]["optionId"]

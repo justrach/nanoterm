@@ -83,11 +83,11 @@ pub fn onRequest(ctx: *anyopaque, id: []const u8, method: []const u8, params: st
     } else if (eq(u8, method, "terminal/kill")) {
         const t = terminal(a, id, params) orelse return;
         t.process.signal(proc.SIGTERM);
-        a.client.respond(id, null);
+        a.client.respond(id, acp.Client.Empty{});
     } else if (eq(u8, method, "terminal/release")) {
         const tid = acp.str(params, "terminalId") orelse return a.client.respondError(id, -32602, "no terminalId");
         a.terminals.release(tid);
-        a.client.respond(id, null);
+        a.client.respond(id, acp.Client.Empty{});
     } else {
         a.client.respondError(id, -32601, "method not found");
     }
@@ -143,7 +143,7 @@ fn writeFile(a: *Agent, id: []const u8, params: std.json.Value, arena: std.mem.A
     if (std.fs.path.dirname(path)) |dir| cwd.createDirPath(a.io, dir) catch {};
     cwd.writeFile(a.io, .{ .sub_path = path, .data = content }) catch |err|
         return a.client.respondError(id, -32603, @errorName(err));
-    a.client.respond(id, null);
+    a.client.respond(id, acp.Client.Empty{});
 }
 
 fn terminal(a: *Agent, id: []const u8, params: std.json.Value) ?*Terminal {

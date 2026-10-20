@@ -4,6 +4,7 @@
 const std = @import("std");
 const proc = @import("proc.zig");
 const ssh = @import("ssh.zig");
+const acp = @import("acp.zig");
 const Agent = @import("agent.zig").Agent;
 
 /// Where the agent works: the `ssh …` of the session, the directory of
@@ -53,7 +54,7 @@ const Job = struct {
             const msg = std.mem.trim(u8, j.out.items[0..@min(j.out.items.len, 300)], " \n");
             a.client.respondError(j.rpc_id, -32002, if (msg.len > 0) msg else "the remote command failed");
         } else if (j.write) {
-            a.client.respond(j.rpc_id, null);
+            a.client.respond(j.rpc_id, acp.Client.Empty{});
         } else a.client.respond(j.rpc_id, .{ .content = j.out.items });
         // Freed once its process is: after this callback returns.
         a.gpa.free(j.rpc_id);
