@@ -2,7 +2,8 @@
 //! terminal is now (and its tools run there); a reply that starts like a
 //! command ("go on") stays with it. A fake ACP agent records the prompts;
 //! nothing reaches the user's agents. And a Mermaid flowchart too wide for
-//! its card is turned and fitted, not cut off.
+//! its card is turned and fitted, not cut off; its edges' labels keep off
+//! its nodes and each other.
 const std = @import("std");
 const nanoui = @import("nanoui");
 const ui = nanoui.ui;
@@ -150,4 +151,55 @@ test "a flowchart too wide for its card is turned and fitted, not cut off" {
     // Turned: the seven sources stacked, the API to their right.
     try std.testing.expect(t.findText("Public API").?.x > t.findText("nanoterm and nanomon").?.x);
     try t.screenshot("/tmp/nanoterm-mermaid-wide.png");
+}
+
+const labeled_flow =
+    \\```mermaid
+    \\flowchart LR
+    \\  R[Request] -->|all routes| P[proxy.ts<br>updateSession]
+    \\  R -->|/api/mobile/* bearer token| M["requireMobile()"]
+    \\  R -.->|/api/webhooks/* HMAC| S[signature verify]
+    \\  P --> A[lib/auth + scope]
+    \\  M --> A
+    \\  A -- tenant --> D[scoped-db]
+    \\  S --> D
+    \\  D --> L[Postgres RLS]
+    \\```
+;
+
+fn drawLabeled(_: *u8, c: *ui.Context) void {
+    const d = ui.div(c).column().wFull().p(20);
+    defer d.end();
+    @import("view_markdown.zig").markdown(c, labeled_flow);
+}
+
+fn overlaps(a: ui.Rect, b: ui.Rect) bool {
+    return a.x < b.x + b.w and b.x < a.x + a.w and a.y < b.y + b.h and b.y < a.y + a.h;
+}
+
+test "a flowchart's edge labels lie in the gaps, off the nodes and each other" {
+    const gpa = std.testing.allocator;
+    var state: u8 = 0;
+    var t: ui.Tester = undefined;
+    try t.init(gpa, .init(&state, drawLabeled), .{ .width = 1400, .height = 700, .theme = theme.ui() });
+    defer t.deinit();
+    t.settle(0.5);
+    const edge_labels = [_][]const u8{ "all routes", "/api/mobile/* bearer token", "/api/webhooks/* HMAC", "tenant" };
+    const node_labels = [_][]const u8{ "Request", "proxy.ts", "updateSession", "requireMobile()", "signature verify", "lib/auth + scope", "scoped-db", "Postgres RLS" };
+    var seen: [edge_labels.len]ui.Rect = undefined;
+    for (edge_labels, 0..) |l, i| {
+        const r = t.findText(l) orelse return error.LabelMissing;
+        // A node's box: its label with the box's padding round it.
+        for (node_labels) |nl| {
+            const n = t.findText(nl) orelse return error.LabelMissing;
+            const box: ui.Rect = .{ .x = n.x - 14, .y = n.y - 9, .w = n.w + 28, .h = n.h + 18 };
+            if (overlaps(r, box)) {
+                std.debug.print("edge label {s} lies on node {s}\n", .{ l, nl });
+                return error.LabelOnNode;
+            }
+        }
+        for (seen[0..i]) |o| try std.testing.expect(!overlaps(r, o));
+        seen[i] = r;
+    }
+    try t.screenshot("/tmp/nanoterm-mermaid-labels.png");
 }

@@ -1,6 +1,9 @@
 //! A prompt's content as Harness sends it over ACP (prompt_images.rs):
 //! the text, with a trailer naming each picture's file, and for an agent
-//! that takes images each picture as an `image` block with its `uri`.
+//! that takes images each picture as an `image` block with its `uri`. The
+//! trailer always goes: an agent that takes images may still be running a
+//! model that can't see them, and it drops the blocks (graff does), so
+//! the file's name is all the model has to open it by.
 const std = @import("std");
 const Image = @import("agent.zig").Image;
 
@@ -14,21 +17,17 @@ pub const trailer_header = "Attached images (local files \u{2014} open them to v
 /// `session/prompt`'s content, as Harness makes it (prompt_images.rs):
 /// the text, with a trailer naming each picture's file; then, for an
 /// agent that takes images (`images_ok`), each picture as an `image`
-/// block with its file's `uri`. The trailer goes once every picture
-/// with a file went inline; an agent without images opens the files.
+/// block with its file's `uri`.
 pub fn parts(arena: std.mem.Allocator, text: []const u8, images: []const Image, images_ok: bool) ![]const Part {
     var out: std.ArrayList(Part) = .empty;
     var trailer: std.ArrayList(u8) = .empty;
-    var all_inline = true;
     for (images) |*im| {
-        const inline_ = images_ok and im.data.len <= max_inline_bytes;
-        if (inline_) try out.append(arena, .{ .image = im });
+        if (images_ok and im.data.len <= max_inline_bytes) try out.append(arena, .{ .image = im });
         if (im.path.len == 0) continue;
-        all_inline = all_inline and inline_;
         if (trailer.items.len == 0) try trailer.print(arena, "\n\n{s}", .{trailer_header});
         try trailer.print(arena, "\n- {s}", .{im.path});
     }
-    const said = if (trailer.items.len > 0 and !all_inline) try std.mem.concat(arena, u8, &.{ text, trailer.items }) else text;
+    const said = if (trailer.items.len > 0) try std.mem.concat(arena, u8, &.{ text, trailer.items }) else text;
     try out.insert(arena, 0, .{ .text = said });
     return out.items;
 }
@@ -77,7 +76,7 @@ fn writeUriPath(w: *std.Io.Writer, path: []const u8) !void {
     }
 }
 
-test "a prompt's pictures as Harness sends them: inline with their files, or named" {
+test "a prompt's pictures as Harness sends them: named, and inline where they can be" {
     var arena_state: std.heap.ArenaAllocator = .init(std.testing.allocator);
     defer arena_state.deinit();
     const a = arena_state.allocator();
@@ -85,10 +84,11 @@ test "a prompt's pictures as Harness sends them: inline with their files, or nam
     var path = "/tmp/my shot.png".*;
     var name = "my shot.png".*;
     const images = [_]Image{.{ .name = &name, .mime = "image/png", .data = &data, .path = &path }};
-    // An agent that takes images: inline, with its uri; no trailer.
+    // An agent that takes images: inline, with its uri, and named too, for
+    // a model that can't see them.
     const inl = try parts(a, "look", &images, true);
     try std.testing.expectEqual(@as(usize, 2), inl.len);
-    try std.testing.expectEqualStrings("look", inl[0].text);
+    try std.testing.expectEqualStrings("look\n\n" ++ trailer_header ++ "\n- /tmp/my shot.png", inl[0].text);
     const json = try std.json.Stringify.valueAlloc(a, inl, .{});
     try std.testing.expect(std.mem.indexOf(u8, json, "\"uri\":\"file:///tmp/my%20shot.png\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"type\":\"image\",\"mimeType\":\"image/png\"") != null);

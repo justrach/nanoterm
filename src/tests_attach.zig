@@ -137,7 +137,7 @@ test "pictures go to the agent as image blocks" {
     const items = a.current().?.items.items;
     try std.testing.expect(items.len > 0 and items[0] == .text);
     var b64: [64]u8 = undefined;
-    // Inline with its file's uri, and no trailer: it all went inline.
-    const want = try std.fmt.allocPrint(arena, "text:what is this? image:image/png:{s}:file://" ++ dir ++ "/a.png", .{std.base64.standard.Encoder.encode(&b64, png)});
+    // Named in the text, for a model that can't see it, and inline with its file's uri.
+    const want = try std.fmt.allocPrint(arena, "text:what is this?\n\n" ++ @import("agent_prompt.zig").trailer_header ++ "\n- " ++ dir ++ "/a.png image:image/png:{s}:file://" ++ dir ++ "/a.png", .{std.base64.standard.Encoder.encode(&b64, png)});
     try std.testing.expectEqualStrings(want, items[0].text.items);
 }
