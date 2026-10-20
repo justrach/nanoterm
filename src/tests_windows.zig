@@ -156,7 +156,7 @@ test "PowerShell cut into blocks: output, exit codes, the folder it moves to" {
     const temp = std.testing.environ.getAlloc(a, "TEMP") catch "C:\\";
     const dir = try std.fs.path.join(a, &.{ temp, "nanoterm-test-pwsh" });
     var map: std.process.Environ.Map = .init(a);
-    for ([_][]const u8{ "SystemRoot", "PATH", "TEMP", "TMP", "USERPROFILE", "COMPUTERNAME", "PSModulePath", "windir", "ProgramFiles" }) |k| {
+    for ([_][]const u8{ "SystemRoot", "PATH", "PATHEXT", "TEMP", "TMP", "USERPROFILE", "COMPUTERNAME", "PSModulePath", "windir", "ProgramFiles", "ProgramData", "APPDATA", "LOCALAPPDATA", "SystemDrive", "ComSpec" }) |k| {
         if (try variable(a, k)) |v| try map.put(k, v);
     }
     var seen: Seen = .{};
