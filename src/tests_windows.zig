@@ -191,7 +191,7 @@ test "PowerShell cut into blocks: output, exit codes, the folder it moves to" {
         }
     }.ok);
     // What PowerShell itself makes of it, shown if the code is wrong.
-    const b2x = try blocks.Block.create(gpa, 4, .shell, "\"lec=$LASTEXITCODE\"", temp, "");
+    const b2x = try blocks.Block.create(gpa, 4, .shell, "\"lec=$LASTEXITCODE tp=$env:TERM_PROGRAM path=$env:Path\"", temp, "");
     defer b2x.destroy(gpa);
     sh.submit(b2x);
     try until(&sh, struct {
