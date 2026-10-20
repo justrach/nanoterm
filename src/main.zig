@@ -103,6 +103,8 @@ pub fn main(init: std.process.Init) !void {
     const first = try w.newTab(start_dir);
     if (which) |a| first.which = a;
     try first.queue.appendSlice(init.gpa, runs.items);
+    // Files the system opens with nanoterm: a tab each (open_files.zig).
+    app.onOpenFiles(&w, @import("open_files.zig").open);
     first.queued_ask = ask;
     for (splits.items) |dir| w.splitFocused(if (std.mem.eql(u8, dir, "down")) .vertical else .horizontal);
     w.updater = try nanoui.Updater.start(init, .{

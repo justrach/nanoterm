@@ -301,6 +301,11 @@ and each platform gets its own, in the menus, the keys and the labels shown.
 Launch options: `--cwd DIR`, `--run CMD` (repeat), `--agent graff|claude`,
 `--ask PROMPT`, `--split right|down` (repeat).
 
+From a shell, [`tools/nt`](tools/nt) (copy it to `~/.local/bin`) opens a
+window here, `nt DIR` in a folder, and `nt FILE` in the file's folder showing
+it, Markdown drawn as Markdown. Files opened with nanoterm from the Finder
+(Open With) or `open -a nanoterm FILE` open the same way, each in a tab.
+
 ## License
 
 nanoterm's own code is licensed under the [MIT License](LICENSE). The parts derived

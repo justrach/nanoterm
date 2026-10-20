@@ -64,6 +64,7 @@ test {
     _ = @import("highlight.zig");
     _ = @import("tests_view.zig");
     _ = @import("tests_sidebar.zig");
+    _ = @import("open_files.zig");
     _ = @import("view_sidebar.zig");
     _ = @import("tests_graff_update.zig");
     _ = @import("graff_update.zig");

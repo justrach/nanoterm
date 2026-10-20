@@ -82,3 +82,35 @@ test "the sidebar: projects, states, needs you, unread until seen, a click" {
     t.settle(0.5);
     try std.testing.expect(!t.hasText("1 needs you"));
 }
+
+test "a file opened with nanoterm: a tab in its folder, showing it; the fresh first tab gives way" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+    var arena_state: std.heap.ArenaAllocator = .init(gpa);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const home = "/tmp/nanoterm-test-open";
+    std.Io.Dir.cwd().deleteTree(io, home) catch {};
+    defer std.Io.Dir.cwd().deleteTree(io, home) catch {};
+    try std.Io.Dir.cwd().createDirPath(io, home ++ "/docs");
+    try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = home ++ "/docs/REPORT.md", .data = "# Report\n" });
+    var env: std.process.Environ.Map = .init(arena);
+    try env.put("HOME", home);
+    try env.put("PATH", "/usr/bin:/bin");
+    var shared = try session_mod.Shared.init(gpa, io, arena, &env);
+    shared.wire();
+    defer shared.deinit();
+    var w: ws_mod.Workspace = .{ .shared = &shared, .nanoapp = undefined };
+    defer w.deinit();
+    _ = try w.newTab(home);
+    const open = @import("open_files.zig").open;
+    open(&w, &.{home ++ "/docs/REPORT.md"});
+    try std.testing.expectEqual(@as(usize, 1), w.tabs.items.len);
+    const s = w.tab().session();
+    try std.testing.expectEqualStrings(home ++ "/docs", s.cwd());
+    try std.testing.expectEqualStrings("cat 'REPORT.md'", s.queue.items[0]);
+    // A folder: a tab in it, beside the first (no longer fresh).
+    open(&w, &.{home ++ "/docs"});
+    try std.testing.expectEqual(@as(usize, 2), w.tabs.items.len);
+    try std.testing.expectEqual(@as(usize, 0), w.tab().session().queue.items.len);
+}

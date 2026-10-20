@@ -1,0 +1,22 @@
+#!/bin/sh
+# nt: a nanoterm window in this folder; in DIR (nt DIR); or in FILE's folder,
+# showing it (nt REPORT.md: Markdown drawn as Markdown). What follows goes to
+# nanoterm: --run "cmd", --ask "prompt", --agent NAME, --split right|down.
+#
+#     cp tools/nt ~/.local/bin/nt
+dir="$PWD"
+show=""
+if [ $# -gt 0 ] && [ -d "$1" ]; then
+  dir="$(cd "$1" && pwd)"
+  shift
+elif [ $# -gt 0 ] && [ -f "$1" ]; then
+  dir="$(cd "$(dirname "$1")" && pwd)"
+  name="$(basename "$1")"
+  # Quoted for the shell nanoterm runs it in.
+  show="cat '$(printf '%s' "$name" | sed "s/'/'\\\\''/g")'"
+  shift
+fi
+if [ -n "$show" ]; then
+  exec open -n -a nanoterm --args --cwd "$dir" --run "$show" "$@"
+fi
+exec open -n -a nanoterm --args --cwd "$dir" "$@"
