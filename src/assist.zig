@@ -128,7 +128,32 @@ pub fn suggestion(s: *Session) []const u8 {
         return "";
     }
     if (s.shell.busy()) return "";
-    return s.shared.history.suggest(text);
+    return s.shared.history.suggestIf(text, Here{ .io = s.io, .cwd = s.cwd(), .home = s.home }, reachable);
+}
+
+/// Where a command would run, to tell whether it still makes sense there.
+pub const Here = struct { io: std.Io, cwd: []const u8, home: []const u8 };
+
+/// Whether `cmd` can run from `here`: a cd (or pushd) only if its directory
+/// is there, as fish checks before suggesting one; anything else, yes.
+pub fn reachable(here: Here, cmd: []const u8) bool {
+    const arg = for ([_][]const u8{ "cd ", "pushd " }) |verb| {
+        if (std.mem.startsWith(u8, cmd, verb)) break std.mem.trim(u8, cmd[verb.len..], " \t");
+    } else return true;
+    // What the shell would expand (variables, globs, quotes, -), it judges.
+    if (arg.len == 0 or std.mem.eql(u8, arg, "-") or std.mem.indexOfAny(u8, arg, "$`*?[\"' ;&|") != null) return true;
+    var buf: [std.fs.max_path_bytes]u8 = undefined;
+    const path = if (std.mem.startsWith(u8, arg, "~/") or std.mem.eql(u8, arg, "~"))
+        std.fmt.bufPrint(&buf, "{s}{s}", .{ here.home, arg[1..] }) catch return true
+    else if (arg[0] == '~')
+        return true // another user's home
+    else if (arg[0] == '/')
+        arg
+    else
+        std.fmt.bufPrint(&buf, "{s}/{s}", .{ here.cwd, arg }) catch return true;
+    var dir = std.Io.Dir.cwd().openDir(here.io, path, .{}) catch return false;
+    dir.close(here.io);
+    return true;
 }
 
 /// Tab: takes the suggestion, else completes the word at the caret.
@@ -195,4 +220,29 @@ fn replaceWord(s: *Session, word: []const u8, space: bool) void {
     s.menu.end = s.menu.start + word.len;
     s.input.set(out);
     s.input.want_caret = s.menu.start + word.len + @intFromBool(space);
+}
+
+test "a cd is suggested only where its directory is" {
+    const io = std.testing.io;
+    const root = "/tmp/nanoterm-test-reach";
+    std.Io.Dir.cwd().deleteTree(io, root) catch {};
+    try std.Io.Dir.cwd().createDirPath(io, root ++ "/advark/advark-website");
+    defer std.Io.Dir.cwd().deleteTree(io, root) catch {};
+    var h: @import("history.zig").History = .{ .gpa = std.testing.allocator };
+    defer h.deinit();
+    h.add("cd advark-website");
+    h.add("cd advark/");
+    // From the root, advark/ is there; from inside it, it isn't, and the
+    // next one back that is (advark-website) is suggested instead.
+    const top: Here = .{ .io = io, .cwd = root, .home = root };
+    const inside: Here = .{ .io = io, .cwd = root ++ "/advark", .home = root };
+    try std.testing.expectEqualStrings("/", h.suggestIf("cd advark", top, reachable));
+    try std.testing.expectEqualStrings("-website", h.suggestIf("cd advark", inside, reachable));
+    // ~, absolute paths, and what the shell expands.
+    try std.testing.expect(reachable(inside, "cd ~/advark"));
+    try std.testing.expect(!reachable(inside, "cd ~/nowhere"));
+    try std.testing.expect(reachable(inside, "cd " ++ root));
+    try std.testing.expect(reachable(inside, "cd $HOME/x"));
+    try std.testing.expect(reachable(inside, "cd -"));
+    try std.testing.expect(reachable(inside, "git status"));
 }

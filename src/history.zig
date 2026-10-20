@@ -88,12 +88,22 @@ pub const History = struct {
 
     /// The rest of the latest command that starts with `prefix`.
     pub fn suggest(h: *const History, prefix: []const u8) []const u8 {
+        return h.suggestIf(prefix, {}, struct {
+            fn any(_: void, _: []const u8) bool {
+                return true;
+            }
+        }.any);
+    }
+
+    /// The rest of the latest command that starts with `prefix` and that
+    /// `ok` accepts (a cd whose directory is there, from where it's typed).
+    pub fn suggestIf(h: *const History, prefix: []const u8, ctx: anytype, comptime ok: fn (@TypeOf(ctx), []const u8) bool) []const u8 {
         if (prefix.len == 0) return "";
         var i = h.items.items.len;
         while (i > 0) {
             i -= 1;
             const s = h.items.items[i];
-            if (s.len > prefix.len and std.mem.startsWith(u8, s, prefix)) return s[prefix.len..];
+            if (s.len > prefix.len and std.mem.startsWith(u8, s, prefix) and ok(ctx, s)) return s[prefix.len..];
         }
         return "";
     }

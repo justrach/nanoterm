@@ -11,6 +11,7 @@ const proc = @import("proc.zig");
 test {
     _ = @import("vt.zig");
     _ = @import("binds.zig");
+    _ = @import("assist.zig");
     _ = @import("find.zig");
     _ = @import("tests_find.zig");
     _ = @import("tests_visual.zig");
