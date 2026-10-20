@@ -19,6 +19,19 @@ test {
     _ = @import("blocks.zig");
 }
 
+extern "kernel32" fn GetEnvironmentVariableW(name: [*:0]const u16, buf: ?[*]u16, size: u32) callconv(.winapi) u32;
+
+/// This process's variable `name` (any case), from Windows itself.
+fn variable(a: std.mem.Allocator, name: []const u8) !?[]const u8 {
+    const w = try std.unicode.utf8ToUtf16LeAllocZ(a, name);
+    const n = GetEnvironmentVariableW(w, null, 0);
+    if (n == 0) return null;
+    const buf = try a.alloc(u16, n);
+    const got = GetEnvironmentVariableW(w, buf.ptr, n);
+    if (got == 0 or got >= n) return null;
+    return try std.unicode.utf16LeToUtf8Alloc(a, buf[0..got]);
+}
+
 extern "kernel32" fn GetModuleHandleW(name: [*:0]const u16) callconv(.winapi) ?*anyopaque;
 extern "kernel32" fn GetProcAddress(module: *anyopaque, name: [*:0]const u8) callconv(.winapi) ?*anyopaque;
 
@@ -144,10 +157,8 @@ test "PowerShell cut into blocks: output, exit codes, the folder it moves to" {
     const dir = try std.fs.path.join(a, &.{ temp, "nanoterm-test-pwsh" });
     var map: std.process.Environ.Map = .init(a);
     for ([_][]const u8{ "SystemRoot", "PATH", "TEMP", "TMP", "USERPROFILE", "COMPUTERNAME", "PSModulePath", "windir", "ProgramFiles" }) |k| {
-        if (std.testing.environ.getAlloc(a, k)) |v| try map.put(k, v) else |_| {}
+        if (try variable(a, k)) |v| try map.put(k, v);
     }
-    // Windows spells it Path.
-    if (map.get("PATH") == null) if (std.testing.environ.getAlloc(a, "Path")) |v| try map.put("PATH", v) else |_| {};
     var seen: Seen = .{};
     var sh = shell_mod.Shell.init(gpa, .{ .ctx = &seen, .changed = Seen.onChanged, .exited = Seen.onExited });
     defer sh.deinit();
