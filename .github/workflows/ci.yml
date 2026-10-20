@@ -72,14 +72,17 @@ jobs:
       # installs it in its own place as it quits.
       - name: An update installs itself
         run: |
+          # (Quoted: PowerShell reads -Dversion=0.0.2 as two arguments.)
           $feed = "$env:RUNNER_TEMP\feed"
           New-Item -ItemType Directory -Force -Path "$feed\nanoterm-0.0.2-windows-x86_64" | Out-Null
-          zig build -Dversion=0.0.2 --prefix zig-out/new
+          zig build "-Dversion=0.0.2" --prefix zig-out/new
+          if ($LASTEXITCODE) { throw "build failed" }
           Copy-Item zig-out/new/bin/nanoterm.exe "$feed\nanoterm-0.0.2-windows-x86_64\"
           Compress-Archive -Path "$feed\nanoterm-0.0.2-windows-x86_64" -DestinationPath "$feed\nanoterm-windows-x86_64.zip"
           $sum = (Get-FileHash "$feed\nanoterm-windows-x86_64.zip" -Algorithm SHA256).Hash.ToLower()
           "{""version"":""0.0.2"",""files"":{""nanoterm-windows-x86_64.zip"":{""sha256"":""$sum""}}}" | Set-Content -NoNewline "$feed\manifest.json"
-          zig build -Dversion=0.0.1 --prefix zig-out/old
+          zig build "-Dversion=0.0.1" --prefix zig-out/old
+          if ($LASTEXITCODE) { throw "build failed" }
           zig-out/old/bin/nanoterm.exe --version | Write-Output
           $env:NANOUI_UPDATE_FEED = "file:///" + ($feed -replace '\\','/')
           zig-out/old/bin/nanoterm.exe "--nanoui-snapshot=$env:RUNNER_TEMP\update.png" --nanoui-wait=45 | Out-Null

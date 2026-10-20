@@ -13,6 +13,7 @@ const agent_mod = @import("agent.zig");
 const view_pane = @import("view_pane.zig");
 const view_overlay = @import("view_overlay.zig");
 const view_find = @import("view_find.zig");
+const view_sidebar = @import("view_sidebar.zig");
 const assist = @import("assist.zig");
 const program = @import("session_program.zig");
 const program_pager = @import("pager.zig");
@@ -37,18 +38,27 @@ pub fn view(w: *Workspace, c: *ui.Context) void {
     c.setZoom(w.zoom);
     shortcuts(w, c);
     view_find.prepare(c, w);
-    const root = ui.div(c).column().sizeFull().bg(theme.background);
-    defer root.end();
-    titleBar(w, c);
-    const t = w.tab();
-    const area: split.Rect = .{ .x = 0, .y = title_height, .w = c.size.w, .h = c.size.h - title_height };
-    w.placed.clearRetainingCapacity();
-    if (t.zoomed) {
-        place(w, t.focused, area);
-        view_pane.pane(c, w, t.session(), area, true, false);
-    } else {
-        const several = t.tree.root.kind == .split;
-        node(w, c, t.tree.root, area, several);
+    // The tab looked at: what its agent finished is read.
+    w.tab().seen_turns = view_sidebar.facts(w.tab()).turns_done;
+    const side = view_sidebar.shown(w);
+    const left: f32 = if (side) view_sidebar.width else 0;
+    const outer = ui.div(c).row().sizeFull().bg(theme.background);
+    defer outer.end();
+    if (side) view_sidebar.draw(w, c, title_height);
+    {
+        const root = ui.div(c).column().w(c.size.w - left).hFull().bg(theme.background);
+        defer root.end();
+        titleBar(w, c, side);
+        const t = w.tab();
+        const area: split.Rect = .{ .x = left, .y = title_height, .w = c.size.w - left, .h = c.size.h - title_height };
+        w.placed.clearRetainingCapacity();
+        if (t.zoomed) {
+            place(w, t.focused, area);
+            view_pane.pane(c, w, t.session(), area, true, false);
+        } else {
+            const several = t.tree.root.kind == .split;
+            node(w, c, t.tree.root, area, several);
+        }
     }
     view_find.bar(c, w, title_height);
     @import("view_update.zig").card(c, w, title_height);
@@ -231,20 +241,33 @@ fn divider(w: *Workspace, c: *ui.Context, n: *Node, split_rect: split.Rect, r: s
     }
 }
 
-fn titleBar(w: *Workspace, c: *ui.Context) void {
+fn titleBar(w: *Workspace, c: *ui.Context, side: bool) void {
     const s = w.focused();
     // Under the hidden title bar: the traffic lights sit on the left.
     const bar = ui.div(c).row().wFull().h(title_height).gap(8).itemsCenter().px(16).bg(theme.background);
     defer bar.end();
-    _ = c.leaf(.{ .width = .{ .px = 62 } }, .none, null);
-    if (w.tabs.items.len > 1) {
-        tabs(w, c);
+    if (side) {
+        // The tabs are the sidebar's: here, the tab's name, folder and state.
+        ui.text(c, view_sidebar.name(w.tab()), .{ .size = 13, .weight = .semibold });
+        ui.text(c, view_sidebar.tilde(c, s.home, s.cwd()), .{ .size = 12, .color = theme.muted, .mono = true });
     } else {
-        ui.text(c, "nanoterm", .{ .size = 13, .weight = .semibold });
-        ui.text(c, s.title(), .{ .size = 12, .color = theme.muted, .mono = true });
+        _ = c.leaf(.{ .width = .{ .px = 62 } }, .none, null);
+        if (w.tabs.items.len > 1) {
+            tabs(w, c);
+        } else {
+            ui.text(c, "nanoterm", .{ .size = 13, .weight = .semibold });
+            ui.text(c, s.title(), .{ .size = 12, .color = theme.muted, .mono = true });
+        }
     }
     ui.spacer(c);
-    if (s.agent) |ag| statusDot(c, ag.status);
+    if (side) {
+        if (view_sidebar.statusLine(c, w.tab())) |line| ui.text(c, line, .{ .size = 12, .color = theme.muted });
+    } else if (s.agent) |ag| statusDot(c, ag.status);
+    if (!side and w.sidebar == .hidden and view_sidebar.anyAgent(w)) {
+        // Hidden while agents run: a way back.
+        ui.key(c, "sidebar-show");
+        if (ui.button(c, "", .{ .variant = .ghost, .size = 11, .icon = "sidebar.left" }).clicked) w.sidebar = .shown;
+    }
     if (w.updater) |u| if (u.ready()) |version| if (!@import("view_update.zig").showing(w)) update(w, c, u, version);
     // Settings, for those who reach for the mouse.
     ui.key(c, "settings-button");

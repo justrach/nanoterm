@@ -128,6 +128,10 @@ pub const Actions = struct {
         a.w.openSettings();
         a.done();
     }
+    fn sidebar(a: *Actions, _: *Item) void {
+        a.w.sidebar = if (@import("view_sidebar.zig").shown(a.w)) .hidden else .shown;
+        a.done();
+    }
     fn graff(a: *Actions, _: *Item) void {
         a.w.focused().choose(.graff);
         a.done();
@@ -183,6 +187,7 @@ pub fn install(app: *nanoui.App, acts: *Actions) !void {
             .separator,
             .{ .label = "Find…", .accelerator = binds.accel("Cmd+F"), .click = of(acts, A.find) },
             .separator,
+            .{ .label = "Show Sidebar", .accelerator = binds.accel("Cmd+Shift+S"), .click = of(acts, A.sidebar) },
             .{ .role = .toggle_full_screen },
         } },
         .{ .label = "Window", .submenu = &.{

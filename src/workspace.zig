@@ -22,6 +22,15 @@ pub const Tab = struct {
     focused: *Node,
     /// The focused pane fills the tab (⌘⇧↩).
     zoomed: bool = false,
+    /// Its agent's finished turns when it was last looked at: more is unread.
+    seen_turns: usize = 0,
+    /// The sidebar's group (view_sidebar.zig), for the folder it was found for.
+    group_cwd: [512]u8 = undefined,
+    group_cwd_len: usize = 0,
+    group_name: [128]u8 = undefined,
+    group_name_len: usize = 0,
+    /// What its sidebar row shows, set by tests instead of a real agent.
+    pretend: ?@import("view_sidebar.zig").Facts = null,
 
     pub fn session(t: *const Tab) *Session {
         return t.focused.kind.leaf;
@@ -36,6 +45,9 @@ pub const Workspace = struct {
     /// Updates from the releases (none in tests), and the version put off
     /// with "Later".
     updater: ?*nanoui.Updater = null,
+    /// The tabs as a sidebar (view_sidebar.zig): when agents are in play,
+    /// or as View ▸ Show Sidebar set it.
+    sidebar: enum { auto, shown, hidden } = .auto,
     update_later: [32]u8 = undefined,
     update_later_len: usize = 0,
     /// The first launch's step (view_onboarding.zig).
