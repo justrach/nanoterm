@@ -85,7 +85,9 @@ jobs:
           if ($LASTEXITCODE) { throw "build failed" }
           zig-out/old/bin/nanoterm.exe --version | Write-Output
           $env:NANOUI_UPDATE_FEED = "file:///" + ($feed -replace '\\','/')
-          zig-out/old/bin/nanoterm.exe "--nanoui-snapshot=$env:RUNNER_TEMP\update.png" --nanoui-wait=45 | Out-Null
+          zig-out/old/bin/nanoterm.exe "--nanoui-snapshot=$env:RUNNER_TEMP\update.png" --nanoui-wait=45 2>&1 | ForEach-Object { "$_" }
+          Get-ChildItem -Recurse -ErrorAction SilentlyContinue "$env:LOCALAPPDATA\nanoterm" | ForEach-Object { $_.FullName }
+          Get-ChildItem zig-out/old/bin | ForEach-Object { $_.Name }
           $v = (zig-out/old/bin/nanoterm.exe --version | Out-String).Trim()
           Write-Output "after: $v"
           if ($v -ne "nanoterm 0.0.2") { throw "not updated: $v" }
