@@ -146,6 +146,8 @@ test "PowerShell cut into blocks: output, exit codes, the folder it moves to" {
     for ([_][]const u8{ "SystemRoot", "PATH", "TEMP", "TMP", "USERPROFILE", "COMPUTERNAME", "PSModulePath", "windir", "ProgramFiles" }) |k| {
         if (std.testing.environ.getAlloc(a, k)) |v| try map.put(k, v) else |_| {}
     }
+    // Windows spells it Path.
+    if (map.get("PATH") == null) if (std.testing.environ.getAlloc(a, "Path")) |v| try map.put("PATH", v) else |_| {};
     var seen: Seen = .{};
     var sh = shell_mod.Shell.init(gpa, .{ .ctx = &seen, .changed = Seen.onChanged, .exited = Seen.onExited });
     defer sh.deinit();
