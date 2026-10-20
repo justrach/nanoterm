@@ -37,7 +37,7 @@ pub fn main(init: std.process.Init) !void {
     // Its version, as the updater checks a downloaded one.
     if (args.len == 2 and std.mem.eql(u8, args[1], "--version")) {
         var buf: [64]u8 = undefined;
-        var w = std.Io.File.stdout().writer(init.io, &buf);
+        var w = std.Io.File.stdout().writerStreaming(init.io, &buf);
         w.interface.print("nanoterm {s}\n", .{if (version.len > 0) version else "dev"}) catch {};
         w.interface.flush() catch {};
         return;
