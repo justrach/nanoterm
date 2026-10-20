@@ -6,12 +6,16 @@ pub fn build(b: *std.Build) void {
     const nanoui = b.dependency("nanoui", .{ .target = target, .optimize = optimize }).module("nanoui");
     // Release packages leave the debug information out (tools/package-linux.sh).
     const strip = b.option(bool, "strip", "Leave debug information out of nanoterm");
+    // Its version, for `--version` and for updates where no bundle says it
+    // (Linux, Windows): the packaging scripts set it.
+    const options = b.addOptions();
+    options.addOption([]const u8, "version", b.option([]const u8, "version", "nanoterm's version (release builds)") orelse "");
     const mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
         .strip = strip,
-        .imports = &.{.{ .name = "nanoui", .module = nanoui }},
+        .imports = &.{ .{ .name = "nanoui", .module = nanoui }, .{ .name = "build_options", .module = options.createModule() } },
     });
     const exe = b.addExecutable(.{ .name = "nanoterm", .root_module = mod });
     // A window of its own on Windows, without a console window beside it.

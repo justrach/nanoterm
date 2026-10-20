@@ -18,6 +18,15 @@ fn forget(ctx: *anyopaque, _: *nanoui.Window) void {
 }
 
 /// An update is ready: show it.
+const version = @import("build_options").version;
+/// This platform's archive in each release, for the updater.
+const asset = switch (@import("builtin").os.tag) {
+    .macos => "nanoterm-macos-arm64.zip",
+    .linux => "nanoterm-linux-" ++ @tagName(@import("builtin").cpu.arch) ++ ".tar.gz",
+    .windows => "nanoterm-windows-" ++ @tagName(@import("builtin").cpu.arch) ++ ".zip",
+    else => "",
+};
+
 fn updateReady(ctx: *anyopaque) void {
     const shared: *session_mod.Shared = @ptrCast(@alignCast(ctx));
     shared.redraw();
@@ -25,6 +34,14 @@ fn updateReady(ctx: *anyopaque) void {
 
 pub fn main(init: std.process.Init) !void {
     const args = try init.minimal.args.toSlice(init.arena.allocator());
+    // Its version, as the updater checks a downloaded one.
+    if (args.len == 2 and std.mem.eql(u8, args[1], "--version")) {
+        var buf: [64]u8 = undefined;
+        var w = std.Io.File.stdout().writer(init.io, &buf);
+        w.interface.print("nanoterm {s}\n", .{if (version.len > 0) version else "dev"}) catch {};
+        w.interface.flush() catch {};
+        return;
+    }
     // Started by an agent as its MCP server: show_visual, then nothing else.
     if (args.len == 4 and std.mem.eql(u8, args[1], "--mcp")) {
         @import("mcp_server.zig").serve(init.gpa, args[2], args[3]);
@@ -90,7 +107,8 @@ pub fn main(init: std.process.Init) !void {
     for (splits.items) |dir| w.splitFocused(if (std.mem.eql(u8, dir, "down")) .vertical else .horizontal);
     w.updater = try nanoui.Updater.start(init, .{
         .repo = "justrach/nanoterm",
-        .asset = "nanoterm-macos-arm64.zip",
+        .asset = asset,
+        .version = version,
         .name = "nanoterm",
         .changed = .{ .ctx = &shared, .func = updateReady },
     });

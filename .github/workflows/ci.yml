@@ -67,3 +67,22 @@ jobs:
         with:
           name: nanoterm-windows
           path: ${{ runner.temp }}/nanoterm-windows.png
+      # Updates on Windows, end to end: a 0.0.1 build finds 0.0.2 in a feed
+      # of the release's files, checks and stages it while it runs, and
+      # installs it in its own place as it quits.
+      - name: An update installs itself
+        run: |
+          $feed = "$env:RUNNER_TEMP\feed"
+          New-Item -ItemType Directory -Force -Path "$feed\nanoterm-0.0.2-windows-x86_64" | Out-Null
+          zig build -Dversion=0.0.2 --prefix zig-out/new
+          Copy-Item zig-out/new/bin/nanoterm.exe "$feed\nanoterm-0.0.2-windows-x86_64\"
+          Compress-Archive -Path "$feed\nanoterm-0.0.2-windows-x86_64" -DestinationPath "$feed\nanoterm-windows-x86_64.zip"
+          $sum = (Get-FileHash "$feed\nanoterm-windows-x86_64.zip" -Algorithm SHA256).Hash.ToLower()
+          "{""version"":""0.0.2"",""files"":{""nanoterm-windows-x86_64.zip"":{""sha256"":""$sum""}}}" | Set-Content -NoNewline "$feed\manifest.json"
+          zig build -Dversion=0.0.1 --prefix zig-out/old
+          zig-out/old/bin/nanoterm.exe --version | Write-Output
+          $env:NANOUI_UPDATE_FEED = "file:///" + ($feed -replace '\\','/')
+          zig-out/old/bin/nanoterm.exe "--nanoui-snapshot=$env:RUNNER_TEMP\update.png" --nanoui-wait=45 | Out-Null
+          $v = (zig-out/old/bin/nanoterm.exe --version | Out-String).Trim()
+          Write-Output "after: $v"
+          if ($v -ne "nanoterm 0.0.2") { throw "not updated: $v" }

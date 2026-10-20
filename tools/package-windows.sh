@@ -14,7 +14,7 @@ out=zig-out/package
 mkdir -p "$out"
 for arch in x86_64 aarch64; do
   prefix="zig-out/windows-$arch"
-  zig build -Doptimize=ReleaseFast -Dtarget="$arch-windows-gnu" --prefix "$prefix" $fork
+  zig build -Doptimize=ReleaseFast -Dtarget="$arch-windows-gnu" -Dversion="$version" --prefix "$prefix" $fork
   dir="$out/nanoterm-$version-windows-$arch"
   rm -rf "$dir"
   mkdir -p "$dir"
@@ -27,3 +27,4 @@ for arch in x86_64 aarch64; do
   (cd "$out" && shasum -a 256 "$name" > "$name.sha256")
   echo "$out/$name"
 done
+sh tools/manifest.sh "$version"

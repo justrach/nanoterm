@@ -1,7 +1,7 @@
 #!/bin/sh
 # Builds nanoterm.app and nanoterm-macos-arm64.dmg in zig-out/package, and the
 # update the app's updater reads from the release: nanoterm-macos-arm64.zip and
-# manifest.json (its version and the zip's sha256).
+# manifest.json (its version and the zip's sha256; tools/manifest.sh).
 #
 #   VERSION=0.1.0 sh macos/package.sh
 #
@@ -24,7 +24,7 @@ zip="$out/$app-macos-arm64.zip"
 # For macOS 13 and Apple silicon from the M1 on: a native build would
 # need the macOS and the CPU it was built on.
 min_macos=13.0
-zig build -Doptimize=ReleaseFast -Dtarget=aarch64-macos.$min_macos -Dcpu=apple_m1 ${ZIG_FLAGS:-}
+zig build -Doptimize=ReleaseFast -Dtarget=aarch64-macos.$min_macos -Dcpu=apple_m1 -Dversion="$version" ${ZIG_FLAGS:-}
 if ! vtool -show-build "zig-out/bin/$app" | grep -q "minos $min_macos\$"; then
   echo "zig-out/bin/$app is not built for macOS $min_macos:" >&2
   vtool -show-build "zig-out/bin/$app" >&2
@@ -101,5 +101,4 @@ shasum -a 256 "$dmg" | tee "$dmg.sha256"
 
 # The update: the (stapled) app zipped, and the manifest naming it.
 ditto -c -k --keepParent "$bundle" "$zip"
-sum="$(shasum -a 256 "$zip" | cut -d' ' -f1)"
-printf '{"version":"%s","files":{"%s":{"sha256":"%s"}}}\n' "$version" "$(basename "$zip")" "$sum" > "$out/manifest.json"
+sh tools/manifest.sh "$version"
