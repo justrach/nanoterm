@@ -218,7 +218,7 @@ test "PowerShell cut into blocks: output, exit codes, the folder it moves to" {
     try std.testing.expect(std.ascii.eqlIgnoreCase("C:\\Windows", sh.cwd.items));
 }
 
-test "zz: a PowerShell session as nanoterm drives it (diagnostic)" {
+test "a PowerShell listing keeps its blank lines and header, as Windows draws them" {
     if (underWine()) return error.SkipZigTest;
     const gpa = std.testing.allocator;
     const io = std.testing.io;
@@ -254,7 +254,8 @@ test "zz: a PowerShell session as nanoterm drives it (diagnostic)" {
         }.ok);
         const out = try b.output.plainText(gpa);
         defer gpa.free(out);
-        std.debug.print("BLOCK<<{f}>>BLOCK\n", .{std.zig.fmtString(out)});
+        errdefer std.debug.print("block {f}\nsession {f}\n", .{ std.zig.fmtString(out), std.zig.fmtString(raw.items) });
+        if (i == 0) try std.testing.expectEqualStrings("hello\nfrom\nWindows", out);
+        if (i == 1) try std.testing.expect(std.mem.indexOf(u8, out, "Directory: C:\\Windows\\Web\n\nMode ") != null);
     }
-    std.debug.print("SESSION<<{f}>>SESSION\n", .{std.zig.fmtString(raw.items)});
 }

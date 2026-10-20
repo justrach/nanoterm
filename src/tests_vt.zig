@@ -126,3 +126,22 @@ test "Windows' pseudo console: wrapped lines and moves up keep the count" {
     try std.testing.expectEqual(@as(usize, 5), o.lines.items.len);
     try std.testing.expectEqualStrings("last", o.lines.items[4].text.items);
 }
+
+test "Windows' pseudo console: a repaint from the top doesn't cost a block its lines" {
+    const gpa = std.testing.allocator;
+    var cursor: vt.Cursor = .{ .rows = 20 };
+    // The shell between commands: ten rows, then a repaint from the top
+    // (a resize), two rows of it.
+    var between: Output = .{ .gpa = gpa, .cursor = &cursor, .follow = true, .cols = 80, .rows = 20 };
+    defer between.deinit();
+    for (0..10) |_| try between.feed("x\r\n");
+    try between.feed("\x1b[Ha\r\nb\r\n");
+    try std.testing.expectEqual(@as(u32, 2), cursor.row);
+    // A command's output from there: row 5 (CSI 6;1H) is past a blank row.
+    var block: Output = .{ .gpa = gpa, .cursor = &cursor, .line_row = cursor.row, .cols = 80, .rows = 20 };
+    defer block.deinit();
+    try block.feed("\r\n    Directory\x1b[6;1HMode");
+    const plain = try block.plainText(gpa);
+    defer gpa.free(plain);
+    try std.testing.expectEqualStrings("    Directory\n\nMode", plain);
+}

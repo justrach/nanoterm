@@ -61,12 +61,9 @@ const drop_batch = max_lines / 8;
 pub const Cursor = struct {
     row: u32 = 0,
     rows: u32 = 24,
-    /// The row the last line written is on: a move down makes lines past it.
-    last: u32 = 0,
 
-    fn down(cur: *Cursor, n: u32) void {
-        cur.last = @min(cur.last + n, cur.rows -| 1);
-        cur.row = cur.last;
+    fn bottom(cur: *const Cursor, row: u32) u32 {
+        return @min(row, cur.rows -| 1);
     }
 };
 
@@ -74,6 +71,11 @@ pub const Output = struct {
     gpa: std.mem.Allocator,
     /// The shell's cursor, where the console moves it by rows (Windows).
     cursor: ?*Cursor = null,
+    /// The console row its last line is on: a move down past it makes lines.
+    line_row: u32 = 0,
+    /// Its lines don't matter (the shell's between commands): its row is
+    /// wherever the cursor goes, a repaint from the top included.
+    follow: bool = false,
     lines: std.ArrayList(Line) = .empty,
     /// The cursor's byte offset in the last line.
     col: usize = 0,
@@ -227,19 +229,22 @@ pub const Output = struct {
         o.trim();
         try o.lines.append(o.gpa, .{});
         o.col = 0;
-        if (o.cursor) |cur| cur.down(1);
+        if (o.cursor) |cur| {
+            cur.row = cur.bottom(cur.row + 1);
+            o.line_row = if (o.follow) cur.row else cur.bottom(o.line_row + 1);
+        }
     }
 
     /// The console's cursor moved to `row`: past the last line's row, line
     /// breaks; above it, the lines already written are kept as they were.
     fn toRow(o: *Output, cur: *Cursor, row: u32) !void {
-        const to = @min(row, cur.rows -| 1);
-        if (to <= cur.last) {
-            cur.row = to;
-            return;
-        }
-        var n = to - cur.last;
-        while (n > 0) : (n -= 1) try o.newline();
+        const to = cur.bottom(row);
+        if (to > o.line_row) {
+            var n = to - o.line_row;
+            while (n > 0) : (n -= 1) try o.newline();
+            o.line_row = to;
+        } else if (o.follow) o.line_row = to;
+        cur.row = to;
     }
 
     fn put(o: *Output, bytes: []const u8) !void {
@@ -270,7 +275,11 @@ pub const Output = struct {
         if (o.cursor) |cur| if (o.cols > 0) {
             const before = if (start == 0) 0 else (start - 1) / o.cols;
             const after = if (end == 0) 0 else (end - 1) / o.cols;
-            if (after > before) cur.down(@intCast(after - before));
+            if (after > before) {
+                const n: u32 = @intCast(after - before);
+                cur.row = cur.bottom(cur.row + n);
+                o.line_row = cur.bottom(o.line_row + n);
+            }
         };
         const color = o.fg orelse if (o.bold) theme.ansi[15] else null;
         const c = color orelse return;
@@ -463,7 +472,8 @@ pub const Output = struct {
             'G' => o.col = param(p, 0, 1) - 1,
             'J' => if (param(p, 0, 0) >= 2) {
                 o.clear();
-                if (o.cursor) |cur| cur.* = .{ .rows = cur.rows };
+                if (o.cursor) |cur| cur.row = 0;
+                o.line_row = 0;
             },
             else => {},
         }

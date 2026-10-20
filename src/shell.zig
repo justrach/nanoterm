@@ -173,7 +173,10 @@ pub const Shell = struct {
         s.rows = size.rows;
         s.cursor.rows = size.rows;
         s.discard.resize(size.cols, size.rows);
-        if (proc.windows) s.discard.cursor = &s.cursor;
+        if (proc.windows) {
+            s.discard.cursor = &s.cursor;
+            s.discard.follow = true;
+        }
         try proc.spawnPty(&s.process, argv, envp, cwd_z, size, .{ .ctx = s, .output = onOutput, .exited = onExited });
         s.alive = true;
     }
@@ -195,7 +198,10 @@ pub const Shell = struct {
         // A full-screen program draws at the terminal's size and asks it
         // questions (where the cursor is, its colors).
         block.output.resize(s.cols, s.rows);
-        if (proc.windows) block.output.cursor = &s.cursor;
+        if (proc.windows) {
+            block.output.cursor = &s.cursor;
+            block.output.line_row = s.cursor.row;
+        }
         block.output.reply = .{ .ctx = s, .func = reply };
         s.sendLine(block.command);
     }
@@ -215,7 +221,10 @@ pub const Shell = struct {
     pub fn submitAs(s: *Shell, block: *blocks.Block, text: []const u8) void {
         s.current = block;
         block.output.resize(s.cols, s.rows);
-        if (proc.windows) block.output.cursor = &s.cursor;
+        if (proc.windows) {
+            block.output.cursor = &s.cursor;
+            block.output.line_row = s.cursor.row;
+        }
         block.output.reply = .{ .ctx = s, .func = reply };
         s.sendLine(text);
     }
@@ -263,7 +272,10 @@ pub const Shell = struct {
         const r = &(s.remote orelse return);
         r.current = block;
         block.output.resize(s.cols, s.rows);
-        if (proc.windows) block.output.cursor = &s.cursor;
+        if (proc.windows) {
+            block.output.cursor = &s.cursor;
+            block.output.line_row = s.cursor.row;
+        }
         block.output.reply = .{ .ctx = s, .func = reply };
         s.process.send(block.command);
         s.process.send(enter);
