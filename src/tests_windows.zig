@@ -177,6 +177,20 @@ test "PowerShell cut into blocks: output, exit codes, the folder it moves to" {
             return !s.busy();
         }
     }.ok);
+    // What PowerShell itself makes of it, shown if the code is wrong.
+    const b2x = try blocks.Block.create(gpa, 4, .shell, "\"lec=$LASTEXITCODE\"", temp, "");
+    defer b2x.destroy(gpa);
+    sh.submit(b2x);
+    try until(&sh, struct {
+        fn ok(s: *shell_mod.Shell) bool {
+            return !s.busy();
+        }
+    }.ok);
+    const seen = try b2x.output.plainText(gpa);
+    defer gpa.free(seen);
+    const b2_out = try b2.output.plainText(gpa);
+    defer gpa.free(b2_out);
+    errdefer std.debug.print("exit 3 block: code {any}, output {s}; then {s}\n", .{ b2.exit_code, b2_out, seen });
     try std.testing.expectEqual(@as(i32, 3), b2.exit_code.?);
 
     const b3 = try blocks.Block.create(gpa, 3, .shell, "Set-Location C:\\Windows", temp, "");
