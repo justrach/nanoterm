@@ -216,3 +216,22 @@ test "PowerShell cut into blocks: output, exit codes, the folder it moves to" {
     }.ok);
     try std.testing.expect(std.ascii.eqlIgnoreCase("C:\\Windows", sh.cwd.items));
 }
+
+test "zz: what PowerShell draws on a pseudo console (diagnostic)" {
+    if (underWine()) return error.SkipZigTest;
+    var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var r: Run = .{};
+    defer r.out.deinit(std.testing.allocator);
+    var p: proc.Process = undefined;
+    const dir = try a.dupeSentinel(u8, (try variable(a, "TEMP")) orelse "C:\\", 0);
+    var envs: std.ArrayList([]const u8) = .empty;
+    for ([_][]const u8{ "SystemRoot", "PATH", "PATHEXT", "TEMP", "USERPROFILE", "PSModulePath", "windir", "ProgramFiles", "APPDATA", "LOCALAPPDATA" }) |k| {
+        if (try variable(a, k)) |v| try envs.append(a, try std.fmt.allocPrint(a, "{s}={s}", .{ k, v }));
+    }
+    try proc.spawnPty(&p, try proc.cStrings(a, &.{ "pwsh.exe", "-NoLogo", "-NoProfile", "-Command", "Write-Output one; Get-ChildItem C:\\Windows\\Web; Write-Output two" }), try proc.cStrings(a, envs.items), dir, .{ .rows = 30, .cols = 100 }, r.sink());
+    defer p.close();
+    try r.wait();
+    std.debug.print("RAW<<{f}>>RAW\n", .{std.zig.fmtString(r.out.items)});
+}
