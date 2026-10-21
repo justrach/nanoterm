@@ -187,7 +187,7 @@ pub fn install(app: *nanoui.App, acts: *Actions) !void {
             .separator,
             .{ .label = "Find…", .accelerator = binds.accel("Cmd+F"), .click = of(acts, A.find) },
             .separator,
-            .{ .label = "Show Sidebar", .accelerator = binds.accel("Cmd+Shift+S"), .click = of(acts, A.sidebar) },
+            .{ .label = "Show Sidebar", .accelerator = binds.accel("Cmd+S"), .click = of(acts, A.sidebar) },
             .{ .role = .toggle_full_screen },
         } },
         .{ .label = "Window", .submenu = &.{
