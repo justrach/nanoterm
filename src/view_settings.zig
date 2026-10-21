@@ -232,8 +232,7 @@ fn updates(c: *ui.Context, w: *Workspace) void {
         const t = ui.div(c).column().grow().gap(2);
         defer t.end();
         ui.text(c, c.print("nanoterm {s}", .{if (u.current.len > 0) u.current else "dev"}), .{ .size = 13.5, .weight = .semibold });
-        const note: []const u8 = if (u.ready()) |v| c.print("Version {s} is ready to install.", .{v}) else switch (u.phase.load(.acquire)) {
-            .busy => "Checking for updates…",
+        const note: []const u8 = if (u.ready()) |v| c.print("Version {s} is ready to install.", .{v}) else if (u.checking()) "Checking for updates…" else switch (u.phase.load(.acquire)) {
             .installed => "Updated: it runs from the next launch.",
             else => "Checks for updates every few hours, and installs them when you quit.",
         };
