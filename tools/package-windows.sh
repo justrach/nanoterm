@@ -14,7 +14,7 @@ out=zig-out/package
 mkdir -p "$out"
 for arch in x86_64 aarch64; do
   prefix="zig-out/windows-$arch"
-  zig build -Doptimize=ReleaseFast -Dtarget="$arch-windows-gnu" -Dversion="$version" --prefix "$prefix" $fork
+  zig build -Doptimize=ReleaseSafe -Dtarget="$arch-windows-gnu" -Dversion="$version" --prefix "$prefix" $fork
   dir="$out/nanoterm-$version-windows-$arch"
   rm -rf "$dir"
   mkdir -p "$dir"

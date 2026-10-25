@@ -24,7 +24,7 @@ zip="$out/$app-macos-arm64.zip"
 # For macOS 13 and Apple silicon from the M1 on: a native build would
 # need the macOS and the CPU it was built on.
 min_macos=13.0
-zig build -Doptimize=ReleaseFast -Dtarget=aarch64-macos.$min_macos -Dcpu=apple_m1 -Dversion="$version" ${ZIG_FLAGS:-}
+zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-macos.$min_macos -Dcpu=apple_m1 -Dversion="$version" ${ZIG_FLAGS:-}
 if ! vtool -show-build "zig-out/bin/$app" | grep -q "minos $min_macos\$"; then
   echo "zig-out/bin/$app is not built for macOS $min_macos:" >&2
   vtool -show-build "zig-out/bin/$app" >&2

@@ -1,5 +1,5 @@
 #!/bin/sh
-# nanoterm for Linux: a release build without debug information, for x86_64 and arm64, each in
+# nanoterm for Linux: a release build (safety checks kept) without debug information, for x86_64 and arm64, each in
 # zig-out/package/nanoterm-linux-<arch>.tar.gz with its license, notices and a
 # .desktop entry. nanoui loads GTK 3 at run time, so it needs only libgtk-3.
 #
@@ -13,7 +13,7 @@ out=zig-out/package
 mkdir -p "$out"
 for arch in x86_64 aarch64; do
   prefix="zig-out/linux-$arch"
-  zig build -Doptimize=ReleaseFast -Dstrip=true -Dtarget="$arch-linux-gnu" -Dversion="$version" --prefix "$prefix" $fork
+  zig build -Doptimize=ReleaseSafe -Dstrip=true -Dtarget="$arch-linux-gnu" -Dversion="$version" --prefix "$prefix" $fork
   dir="$out/nanoterm-$version-linux-$arch"
   rm -rf "$dir"
   mkdir -p "$dir"
