@@ -26,7 +26,10 @@ pub fn pane(c: *ui.Context, w: *Workspace, s: *Session, rect: anytype, focused: 
     defer p.end();
     const inside = if (@import("pager.zig").open) |pg| (if (pg.session == s) pg else null) else null;
     if (s.shell.fullScreen()) |screen| {
-        view_screen.draw(c, screen, focused);
+        // A program drawing in place, the mouse not its own: the lines it
+        // scrolled off are above its screen, and the wheel scrolls to them.
+        const back = if (s.shell.inlineOutput()) |o| (if (screen.mouse == .off) o else null) else null;
+        if (back) |o| view_screen.drawInline(c, o.lines.items, screen, focused) else view_screen.draw(c, screen, focused);
     } else if (inside) |pg| {
         // Inside a block's output: its pager, in place of the timeline.
         @import("view_pager.zig").draw(c, pg, rect.w, rect.h);

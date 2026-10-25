@@ -93,3 +93,53 @@ test "a prompt drawn in place gets a screen; Return reaches it; its last screen 
     defer gpa.free(text);
     try std.testing.expectEqualStrings("Accessing workspace\n> 1. Yes, I trust this folder\n  2. No, exit\nchosen", text);
 }
+
+fn drawing(t: *ui.Tester, s: *session_mod.Session) bool {
+    return s.shell.inlineOutput() != null and t.containsText("> prompt");
+}
+
+test "the wheel over a program drawing in place scrolls back to the lines it scrolled off" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+    var arena_state: std.heap.ArenaAllocator = .init(gpa);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const home = "/tmp/nanoterm-test-inline-wheel";
+    std.Io.Dir.cwd().deleteTree(io, home) catch {};
+    try std.Io.Dir.cwd().createDirPath(io, home);
+    var env: std.process.Environ.Map = .init(arena);
+    try env.put("HOME", home);
+    try env.put("PATH", "/usr/bin:/bin");
+    var shared = try session_mod.Shared.init(gpa, io, arena, &env);
+    shared.wire();
+    defer shared.deinit();
+    var w: ws_mod.Workspace = .{ .shared = &shared, .nanoapp = undefined };
+    defer w.deinit();
+    const s = try w.newTab(home);
+    var t: ui.Tester = undefined;
+    try t.init(gpa, .init(&w, view.view), .{ .width = 900, .height = 560, .theme = theme.ui() });
+    defer t.deinit();
+    try std.testing.expect(until(&t, s, ready));
+
+    // A REPL: bracketed paste on, a hundred lines of answer, a prompt; it
+    // keeps whatever it's sent until a q.
+    s.run("printf '\\033[?2004h'; for i in $(seq 1 100); do echo \"answer $i\"; done; printf '> prompt'; " ++
+        "stty raw -echo; dd bs=1 count=1 of=got 2>/dev/null; stty sane; printf '\\033[?2004l\\n'");
+    try std.testing.expect(until(&t, s, drawing));
+    const first = t.findText("answer 1") orelse return error.NoLine;
+    try std.testing.expect(first.y < 0);
+
+    // Up by a lot: the first answer comes into view, and no arrow keys go.
+    var k: usize = 0;
+    while (k < 40) : (k += 1) t.scroll(450, 280, 200);
+    const back = t.findText("answer 1") orelse return error.NoLine;
+    try std.testing.expect(back.y >= 0 and back.y < 560);
+
+    // Typing goes to the program, and back to its screen.
+    t.ctx.input.chars = "q";
+    t.frame();
+    t.ctx.input.chars = "";
+    try std.testing.expect(until(&t, s, ready));
+    var buf: [16]u8 = undefined;
+    try std.testing.expectEqualStrings("q", try std.Io.Dir.cwd().readFile(io, home ++ "/got", &buf));
+}

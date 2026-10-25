@@ -312,6 +312,14 @@ pub const Shell = struct {
         return f.screen;
     }
 
+    /// The output of a program drawing in place (no alternate screen),
+    /// whose lines are what it scrolled off its screen.
+    pub fn inlineOutput(s: *const Shell) ?*@import("vt.zig").Output {
+        const b = s.current orelse return null;
+        if (b.output.full == null or !b.output.inline_screen) return null;
+        return &b.output;
+    }
+
     pub fn busy(s: *const Shell) bool {
         return s.current != null;
     }

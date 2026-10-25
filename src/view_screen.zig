@@ -11,6 +11,7 @@ const screen = @import("screen.zig");
 const Screen = screen.Screen;
 const Session = @import("session.zig").Session;
 const mouse = @import("screen_mouse.zig");
+const vt = @import("vt.zig");
 
 /// The size of the text; blocks show output at the same.
 pub fn style() ui.TextStyle {
@@ -93,6 +94,31 @@ pub fn draw(c: *ui.Context, s: *Screen, focused: bool) void {
             .border_width = 1,
         }, .none, null);
     }
+}
+
+/// At most this many of a program's scrolled-off lines show above it.
+const scrollback = 2000;
+
+/// The screen of a program drawing in place (a REPL, Ink's apps), under
+/// the lines it scrolled off, as a terminal's scrollback: the wheel
+/// scrolls back through them, and typing comes back to the screen.
+pub fn drawInline(c: *ui.Context, lines: []const vt.Line, s: *Screen, focused: bool) void {
+    const box = c.open(.{ .direction = .column, .width = .fill, .grow = 1, .scroll = true, .follow_end = true, .selectable = true, .background = theme.background }, null);
+    defer c.end();
+    const id = c.node(box).id;
+    if (focused and (c.input.chars.len > 0 or c.input.key != null or c.input.ops.len > 0)) c.scroll.put(c.gpa, id, 1e9) catch {};
+    // Rows as the screen's: each was one, at most as wide.
+    const m = metrics(c);
+    {
+        const col = ui.div(c).column().wFull().px(pad_x).pt(pad_y);
+        defer col.end();
+        for (lines[lines.len -| scrollback..]) |l| {
+            const r = ui.div(c).row().wFull().h(m.h).itemsCenter();
+            defer r.end();
+            ui.richText(c, l.text.items, l.spans.items, style());
+        }
+    }
+    draw(c, s, focused);
 }
 
 /// A row's backgrounds, one box per run of cells of a color.
@@ -238,8 +264,10 @@ pub fn keys(c: *ui.Context, a: *Session, s: *Screen) void {
 }
 
 /// The wheel, a line a row's height: the program's wheel buttons when it
-/// tracks the mouse, else the arrow keys, as terminals do.
+/// tracks the mouse, else the arrow keys, as terminals do on the alternate
+/// screen. A program drawing in place leaves it to scroll its lines back.
 fn wheel(c: *ui.Context, a: *Session, s: *Screen) void {
+    if (s.mouse == .off and a.shell.inlineOutput() != null) return;
     c.wants_wheel = true;
     const dy = c.input.scroll.y;
     if (dy == 0) return;
